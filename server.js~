@@ -37,10 +37,10 @@ const storage = multer.diskStorage({
 const upload = multer({storage: storage });
 
 const db = mysql.createConnection({
-  host: process.env.HOST,
-  user: process.env.USERNAME,
-  password: process.env.PASSWORD,
-  database: process.env.DB,
+  host: proc,
+  user: 'root',
+  password: 'H@rri50nmysql',
+  database: 'asset_management',
 });
 
 db.connect((err) => {
