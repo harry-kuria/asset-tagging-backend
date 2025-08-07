@@ -12,43 +12,323 @@ A complete Go backend for the Asset Tagging system, providing RESTful API endpoi
 - **File Upload**: Support for asset logo uploads
 - **Database**: MySQL database with connection pooling
 
+## ⚡ Quick Start
+
+### Prerequisites
+- Go 1.18+ | MySQL 5.7+ | Git
+
+### 1. Install Dependencies
+```bash
+# Install Go
+sudo apt update && sudo apt install golang-go
+
+# Install Terraform
+wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
+unzip terraform_1.5.7_linux_amd64.zip && sudo mv terraform /usr/local/bin/
+
+# Install AWS CLI
+sudo apt install awscli -y
+```
+
+### 2. Setup Backend
+```bash
+cd backend
+go mod tidy
+cp .env.example .env  # Edit with your database credentials
+go run .
+```
+
+### 3. Deploy to Cloud (Optional)
+```bash
+git clone https://github.com/harry-kuria/moowi-IAC.git
+cd moowi-IAC
+aws configure  # Set up AWS credentials
+make quickstart
+make deploy
+```
+
+**🎯 Your application will be running at `http://localhost:5000`**
+
 ## Prerequisites
 
 - Go 1.18 or higher
 - MySQL 5.7 or higher
 - Git
 
-## Installation
+## 🚀 Complete Setup Guide
 
-1. **Navigate to the backend directory**
-   ```bash
-   cd backend
-   ```
+### Local Development Setup
 
-2. **Install dependencies**
-   ```bash
-   go mod tidy
-   ```
+#### 1. Install Go
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install golang-go
 
-3. **Set up environment variables**
-   Create a `.env` file in the backend directory:
-   ```env
-   HOST=localhost:3306
-   USERNAME=your_mysql_username
-   PASSWORD=your_mysql_password
-   DB=asset_management
-   JWT_SECRET=your_jwt_secret_key
-   PORT=5000
-   ```
+# Or download from https://golang.org/dl/
+```
 
-4. **Set up the database**
-   - Create a MySQL database named `asset_management`
-   - Import the SQL schema from `asset_management.sql`
+#### 2. Install Terraform (for infrastructure deployment)
+```bash
+# Download and install Terraform
+wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
+unzip terraform_1.5.7_linux_amd64.zip
+sudo mv terraform /usr/local/bin/
+rm terraform_1.5.7_linux_amd64.zip
 
-5. **Run the application**
-   ```bash
-   go run .
-   ```
+# Verify installation
+terraform --version
+```
+
+#### 3. Install AWS CLI
+```bash
+# Ubuntu/Debian
+sudo apt install awscli -y
+
+# Or install AWS CLI v2
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+rm -rf aws awscliv2.zip
+```
+
+#### 4. Install Docker (optional, for containerized development)
+```bash
+sudo apt update
+sudo apt install docker.io docker-compose
+sudo usermod -aG docker $USER
+# Log out and back in for group changes to take effect
+```
+
+### Backend Application Setup
+
+#### 1. Navigate to the backend directory
+```bash
+cd backend
+```
+
+#### 2. Install Go dependencies
+```bash
+go mod tidy
+```
+
+#### 3. Set up environment variables
+Create a `.env` file in the backend directory:
+```env
+HOST=localhost:3306
+USERNAME=your_mysql_username
+PASSWORD=your_mysql_password
+DB=asset_management
+JWT_SECRET=your_jwt_secret_key
+PORT=5000
+```
+
+#### 4. Set up the database
+```bash
+# Create MySQL database
+mysql -u root -p
+CREATE DATABASE asset_management;
+USE asset_management;
+SOURCE asset_management.sql;
+EXIT;
+```
+
+#### 5. Run the application locally
+```bash
+go run .
+```
+
+### 🏗️ Infrastructure Setup (Production Deployment)
+
+#### 1. Clone the Infrastructure Repository
+```bash
+git clone https://github.com/harry-kuria/moowi-IAC.git
+cd moowi-IAC
+```
+
+#### 2. Configure AWS Credentials
+```bash
+aws configure
+# Enter your AWS Access Key ID
+# Enter your AWS Secret Access Key
+# Enter your default region (e.g., us-east-1)
+# Enter your output format (json)
+```
+
+#### 3. Create SSH Key Pair
+```bash
+aws ec2 create-key-pair --key-name asset-tagging-key --query 'KeyMaterial' --output text > ~/.ssh/asset-tagging-key.pem
+chmod 400 ~/.ssh/asset-tagging-key.pem
+```
+
+#### 4. Configure Deployment Variables
+```bash
+# Copy example configuration
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+
+# Edit configuration
+nano terraform/terraform.tfvars
+```
+
+**Important variables to set:**
+```hcl
+ssh_key_name = "asset-tagging-key"
+db_password = "your-secure-password"
+domain_name = "your-domain.com"  # Optional
+```
+
+#### 5. Deploy Infrastructure
+```bash
+# Quick deployment
+make quickstart
+make deploy
+
+# Or manual deployment
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+#### 6. Deploy Application
+```bash
+# Build and push your Go application
+cd ../backend
+docker build -t asset-tagging-backend:latest .
+
+# The application will be automatically deployed via user data script
+# Wait 5-10 minutes for the EC2 instance to fully initialize
+```
+
+#### 7. Verify Deployment
+```bash
+# Check application health
+make health
+
+# Get access information
+make monitoring
+make ssh
+```
+
+### 🐳 Docker Development Setup
+
+#### 1. Start Development Environment
+```bash
+cd backend
+docker-compose up -d
+```
+
+#### 2. Access Services
+- **Application**: http://localhost:5000
+- **MySQL**: localhost:3306
+- **Nginx**: http://localhost:80
+
+#### 3. View Logs
+```bash
+docker-compose logs -f
+```
+
+#### 4. Stop Development Environment
+```bash
+docker-compose down
+```
+
+### 🔧 Management Commands
+
+```bash
+# Infrastructure management
+make init      # Initialize Terraform
+make plan      # Plan infrastructure changes
+make apply     # Apply infrastructure changes
+make destroy   # Destroy infrastructure
+make status    # Check infrastructure status
+
+# Development environment
+make dev-up    # Start development environment
+make dev-down  # Stop development environment
+make dev-logs  # View development logs
+
+# Health checks
+make health    # Check application health
+make monitoring # Access monitoring dashboards
+make ssh       # SSH access information
+```
+
+### 📊 Access URLs
+
+After deployment, you'll have access to:
+- **Application**: `http://<load-balancer-dns>`
+- **Prometheus**: `http://<server-ip>:9090`
+- **Grafana**: `http://<server-ip>:3000` (admin/admin123)
+
+### 💰 Cost Estimation
+
+Estimated monthly costs:
+- **EC2 t3.medium**: ~$30/month
+- **RDS db.t3.micro**: ~$15/month
+- **ALB**: ~$20/month
+- **Data Transfer**: ~$5-10/month
+- **Total**: ~$70-80/month
+
+### 🔒 Security Notes
+
+- SSH key is required for server access
+- Database is in private subnet
+- All traffic goes through load balancer
+- SSL/TLS encryption enabled
+- Automated backups configured
+
+### 🚨 Troubleshooting
+
+#### Common Issues:
+
+1. **Terraform errors**: Check AWS credentials and permissions
+2. **Application not responding**: Wait 5-10 minutes for initialization
+3. **Database connection issues**: Check security groups
+4. **SSL certificate issues**: Verify domain configuration
+
+#### Logs:
+```bash
+# Application logs
+ssh -i ~/.ssh/asset-tagging-key.pem ubuntu@<server-ip>
+sudo journalctl -u asset-tagging.service -f
+
+# Docker logs
+docker logs asset-tagging-app
+```
+
+## 🏗️ Infrastructure Repository
+
+This backend is designed to work with the **Moowi Infrastructure as Code** repository:
+
+### Repository: [moowi-IAC](https://github.com/harry-kuria/moowi-IAC.git)
+
+**Features:**
+- 🚀 **Complete AWS Infrastructure**: VPC, EC2, RDS, ALB, CloudWatch
+- 🔒 **Enterprise Security**: Private subnets, security groups, SSL/TLS
+- 📊 **Full Monitoring**: Prometheus + Grafana dashboards
+- 🐳 **Docker Ready**: Containerized deployment
+- ⚡ **One-Command Deployment**: `make deploy`
+- 💰 **Cost Optimized**: ~$70-80/month
+
+**Quick Infrastructure Setup:**
+```bash
+git clone https://github.com/harry-kuria/moowi-IAC.git
+cd moowi-IAC
+make quickstart
+make deploy
+```
+
+**Repository Structure:**
+```
+moowi-IAC/
+├── terraform/          # AWS infrastructure as code
+├── docker/            # Local development setup
+├── deployment/        # Automated deployment scripts
+├── monitoring/        # Prometheus & Grafana configs
+├── Makefile          # Easy management commands
+└── README.md         # Complete documentation
+```
 
 ## API Endpoints
 
