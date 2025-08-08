@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,88 +13,71 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	trialPeriodDays = 30
-)
-
-// Claims represents JWT claims
+// Claims represents JWT claims with company support
 type Claims struct {
-	UserID            int    `json:"userId"`
-	Username          string `json:"username"`
-	IsLicenseActive   bool   `json:"isLicenseActive"`
-	TrialStartDate    string `json:"trialStartDate"`
+	UserID    int    `json:"user_id"`
+	CompanyID int    `json:"company_id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-// generateToken creates a JWT token for the user
-func generateToken(user User) (string, error) {
-	secretKey := os.Getenv("JWT_SECRET")
-	if secretKey == "" {
-		secretKey = "your-secret-key" // Default fallback
-	}
-
-	claims := Claims{
-		UserID:          user.ID,
-		Username:        user.Username,
-		IsLicenseActive: user.IsLicenseActive,
-		TrialStartDate:  user.TrialStartDate.Format("2006-01-02"),
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secretKey))
-}
-
-// hashPassword hashes a password using bcrypt
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
-}
-
-// checkPassword compares a password with its hash
-func checkPassword(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
-
-// generateRandomPassword generates a random password
-func generateRandomPassword(length int) (string, error) {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-	password := make([]byte, length)
-	
-	for i := range password {
-		randomByte := make([]byte, 1)
-		_, err := rand.Read(randomByte)
-		if err != nil {
-			return "", err
-		}
-		password[i] = charset[randomByte[0]%byte(len(charset))]
-	}
-	
-	return string(password), nil
-}
-
-// loginHandler handles user login
+// loginHandler handles user login with company code
 func loginHandler(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
 			Success: false,
-			Error:   "Invalid request data",
+			Error:   "Invalid request data: " + err.Error(),
 		})
 		return
 	}
 
-	log.Printf("Received login request for username: %s", req.Username)
+	// First, find the company by company code
+	var company Company
+	err := db.QueryRow(`
+		SELECT id, company_name, company_code, email, subscription_plan, is_active, trial_ends_at 
+		FROM companies 
+		WHERE company_code = ? AND is_active = true
+	`, req.CompanyCode).Scan(
+		&company.ID, &company.CompanyName, &company.CompanyCode, 
+		&company.Email, &company.SubscriptionPlan, &company.IsActive, &company.TrialEndsAt,
+	)
 
-	// Query the database for the user
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusUnauthorized, APIResponse{
+				Success: false,
+				Error:   "Invalid company code",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database error: " + err.Error(),
+		})
+		return
+	}
+
+	// Check if company trial has expired
+	if company.TrialEndsAt != nil && time.Now().After(*company.TrialEndsAt) {
+		c.JSON(http.StatusForbidden, APIResponse{
+			Success: false,
+			Error:   "Company trial has expired. Please contact support.",
+		})
+		return
+	}
+
+	// Find user by username and company_id
 	var user User
-	err := db.QueryRow("SELECT id, username, password, trialStartDate, isLicenseActive, createdAt, updatedAt FROM users WHERE username = ?", req.Username).
-		Scan(&user.ID, &user.Username, &user.Password, &user.TrialStartDate, &user.IsLicenseActive, &user.CreatedAt, &user.UpdatedAt)
+	err = db.QueryRow(`
+		SELECT id, company_id, username, email, password_hash, first_name, last_name, role, is_active, last_login
+		FROM users 
+		WHERE username = ? AND company_id = ? AND is_active = true
+	`, req.Username, company.ID).Scan(
+		&user.ID, &user.CompanyID, &user.Username, &user.Email, &user.PasswordHash,
+		&user.FirstName, &user.LastName, &user.Role, &user.IsActive, &user.LastLogin,
+	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -106,16 +87,15 @@ func loginHandler(c *gin.Context) {
 			})
 			return
 		}
-		log.Printf("Error executing MySQL query: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Error:   "Internal Server Error",
+			Error:   "Database error: " + err.Error(),
 		})
 		return
 	}
 
-	// Check password
-	if !checkPassword(req.Password, user.Password) {
+	// Verify password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, APIResponse{
 			Success: false,
 			Error:   "Invalid username or password",
@@ -123,162 +103,25 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
+	// Update last login
+	_, err = db.Exec("UPDATE users SET last_login = NOW() WHERE id = ?", user.ID)
+	if err != nil {
+		// Log error but don't fail login
+		log.Printf("Failed to update last login: %v", err)
+	}
+
 	// Generate JWT token
-	token, err := generateToken(user)
-	if err != nil {
-		log.Printf("Error generating token: %v", err)
-		c.JSON(http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Error:   "Internal Server Error",
-		})
-		return
-	}
-
-	// Get user roles
-	var userRole UserRole
-	err = db.QueryRow("SELECT id, user_id, userManagement, assetManagement, encodeAssets, addMultipleAssets, viewReports, printReports FROM user_roles WHERE user_id = ?", user.ID).
-		Scan(&userRole.ID, &userRole.UserID, &userRole.UserManagement, &userRole.AssetManagement, &userRole.EncodeAssets, &userRole.AddMultipleAssets, &userRole.ViewReports, &userRole.PrintReports)
-
-	if err != nil && err != sql.ErrNoRows {
-		log.Printf("Error fetching user roles: %v", err)
-	}
-
-	response := gin.H{
-		"success": true,
-		"message": "Login successful",
-		"token":   token,
-		"user": gin.H{
-			"id":              user.ID,
-			"username":        user.Username,
-			"trialStartDate":  user.TrialStartDate,
-			"isLicenseActive": user.IsLicenseActive,
-			"roles":           userRole,
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := Claims{
+		UserID:    user.ID,
+		CompanyID: user.CompanyID,
+		Username:  user.Username,
+		Role:      user.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
 		},
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
-// createAccountHandler handles account creation
-func createAccountHandler(c *gin.Context) {
-	var req CreateAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, APIResponse{
-			Success: false,
-			Error:   "Invalid request data",
-		})
-		return
-	}
-
-	// Check if username already exists
-	var existingUser int
-	err := db.QueryRow("SELECT id FROM users WHERE username = ?", req.Username).Scan(&existingUser)
-	if err == nil {
-		c.JSON(http.StatusConflict, APIResponse{
-			Success: false,
-			Error:   "Username already exists",
-		})
-		return
-	}
-
-	// Hash password
-	hashedPassword, err := hashPassword(req.Password)
-	if err != nil {
-		log.Printf("Error hashing password: %v", err)
-		c.JSON(http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Error:   "Internal Server Error",
-		})
-		return
-	}
-
-	// Insert new user
-	result, err := db.Exec("INSERT INTO users (username, password, trialStartDate, isLicenseActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
-		req.Username, hashedPassword, time.Now(), false, time.Now(), time.Now())
-	if err != nil {
-		log.Printf("Error creating user: %v", err)
-		c.JSON(http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Error:   "Internal Server Error",
-		})
-		return
-	}
-
-	userID, _ := result.LastInsertId()
-
-	// Insert default user roles
-	_, err = db.Exec("INSERT INTO user_roles (user_id, userManagement, assetManagement, encodeAssets, addMultipleAssets, viewReports, printReports) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		userID, true, true, true, true, true, true)
-	if err != nil {
-		log.Printf("Error creating user roles: %v", err)
-	}
-
-	c.JSON(http.StatusCreated, APIResponse{
-		Success: true,
-		Message: "Account created successfully",
-		Data: gin.H{
-			"userId": userID,
-		},
-	})
-}
-
-// checkTrialStatus middleware checks if the user's trial is still valid
-func checkTrialStatus(c *gin.Context) {
-	// Get user from JWT token
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, APIResponse{
-			Success: false,
-			Error:   "User not authenticated",
-		})
-		c.Abort()
-		return
-	}
-
-	userData := user.(User)
-
-	// If the user has an active license, skip trial check
-	if userData.IsLicenseActive {
-		c.Next()
-		return
-	}
-
-	// Calculate the trial end date and check if it's expired
-	trialEndDate := userData.TrialStartDate.AddDate(0, 0, trialPeriodDays)
-	currentDate := time.Now()
-
-	if currentDate.After(trialEndDate) {
-		c.JSON(http.StatusForbidden, APIResponse{
-			Success: false,
-			Error:   "Trial period has expired. Please purchase a license.",
-		})
-		c.Abort()
-		return
-	}
-
-	c.Next()
-}
-
-// authMiddleware validates JWT token and sets user in context
-func authMiddleware(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, APIResponse{
-			Success: false,
-			Error:   "Authorization header required",
-		})
-		c.Abort()
-		return
-	}
-
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	if tokenString == authHeader {
-		c.JSON(http.StatusUnauthorized, APIResponse{
-			Success: false,
-			Error:   "Bearer token required",
-		})
-		c.Abort()
-		return
 	}
 
 	secretKey := os.Getenv("JWT_SECRET")
@@ -286,82 +129,314 @@ func authMiddleware(c *gin.Context) {
 		secretKey = "your-secret-key"
 	}
 
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(secretKey), nil
-	})
-
-	if err != nil || !token.Valid {
-		c.JSON(http.StatusUnauthorized, APIResponse{
-			Success: false,
-			Error:   "Invalid token",
-		})
-		c.Abort()
-		return
-	}
-
-	claims, ok := token.Claims.(*Claims)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, APIResponse{
-			Success: false,
-			Error:   "Invalid token claims",
-		})
-		c.Abort()
-		return
-	}
-
-	// Get user from database
-	var user User
-	err = db.QueryRow("SELECT id, username, password, trialStartDate, isLicenseActive, createdAt, updatedAt FROM users WHERE id = ?", claims.UserID).
-		Scan(&user.ID, &user.Username, &user.Password, &user.TrialStartDate, &user.IsLicenseActive, &user.CreatedAt, &user.UpdatedAt)
-
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(secretKey))
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, APIResponse{
+		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Error:   "User not found",
+			Error:   "Failed to generate token",
 		})
-		c.Abort()
 		return
 	}
 
-	c.Set("user", user)
-	c.Next()
+	// Return login response
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Message: "Login successful",
+		Data: LoginResponse{
+			Token:     tokenString,
+			User:      user,
+			Company:   company,
+			ExpiresAt: expirationTime.Unix(),
+		},
+	})
 }
 
-// numberToWords converts a number to words
-func numberToWords(num int) string {
-	if num == 0 {
-		return "zero"
+// registerCompanyHandler handles company registration with admin user
+func registerCompanyHandler(c *gin.Context) {
+	var req RegisterCompanyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Invalid request data: " + err.Error(),
+		})
+		return
 	}
 
-	units := []string{"", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}
-	teens := []string{"ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"}
-	tens := []string{"", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"}
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to start transaction",
+		})
+		return
+	}
+	defer tx.Rollback()
 
-	if num < 10 {
-		return units[num]
-	} else if num < 20 {
-		return teens[num-10]
-	} else if num < 100 {
-		if num%10 == 0 {
-			return tens[num/10]
-		}
-		return tens[num/10] + " " + units[num%10]
-	} else if num < 1000 {
-		if num%100 == 0 {
-			return units[num/100] + " hundred"
-		}
-		return units[num/100] + " hundred and " + numberToWords(num%100)
-	} else if num < 1000000 {
-		if num%1000 == 0 {
-			return numberToWords(num/1000) + " thousand"
-		}
-		return numberToWords(num/1000) + " thousand " + numberToWords(num%1000)
+	// Check if company code already exists
+	var existingID int
+	err = tx.QueryRow("SELECT id FROM companies WHERE company_code = ?", req.CompanyCode).Scan(&existingID)
+	if err == nil {
+		c.JSON(http.StatusConflict, APIResponse{
+			Success: false,
+			Error:   "Company code already exists",
+		})
+		return
 	}
 
-	return fmt.Sprintf("%d", num)
+	// Check if company email already exists
+	err = tx.QueryRow("SELECT id FROM companies WHERE email = ?", req.Email).Scan(&existingID)
+	if err == nil {
+		c.JSON(http.StatusConflict, APIResponse{
+			Success: false,
+			Error:   "Company email already exists",
+		})
+		return
+	}
+
+	// Create company
+	var companyID int64
+	result, err := tx.Exec(`
+		INSERT INTO companies (company_name, company_code, email, phone, address, industry, trial_ends_at)
+		VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))
+	`, req.CompanyName, req.CompanyCode, req.Email, req.Phone, req.Address, req.Industry)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to create company: " + err.Error(),
+		})
+		return
+	}
+
+	companyID, err = result.LastInsertId()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to get company ID",
+		})
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.AdminUser.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to hash password",
+		})
+		return
+	}
+
+	// Create admin user
+	var userID int64
+	result, err = tx.Exec(`
+		INSERT INTO users (company_id, username, email, password_hash, first_name, last_name, role)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, companyID, req.AdminUser.Username, req.AdminUser.Email, string(hashedPassword),
+		req.AdminUser.FirstName, req.AdminUser.LastName, "admin")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to create admin user: " + err.Error(),
+		})
+		return
+	}
+
+	userID, err = result.LastInsertId()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to get user ID",
+		})
+		return
+	}
+
+	// Create default user roles for admin
+	_, err = tx.Exec(`
+		INSERT INTO user_roles (user_id, company_id, role) VALUES 
+		(?, ?, 'userManagement'),
+		(?, ?, 'assetManagement'),
+		(?, ?, 'encodeAssets')
+	`, userID, companyID, userID, companyID, userID, companyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to create user roles: " + err.Error(),
+		})
+		return
+	}
+
+	// Create default asset categories
+	defaultCategories := []struct {
+		name  string
+		color string
+	}{
+		{"Computer", "#007bff"},
+		{"Printer", "#28a745"},
+		{"Network", "#ffc107"},
+		{"Furniture", "#dc3545"},
+		{"Vehicle", "#6f42c1"},
+		{"Equipment", "#fd7e14"},
+	}
+
+	for _, cat := range defaultCategories {
+		_, err = tx.Exec(`
+			INSERT INTO asset_categories (company_id, name, description, color)
+			VALUES (?, ?, ?, ?)
+		`, companyID, cat.name, cat.name+" equipment", cat.color)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   "Failed to create default categories: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to commit transaction",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, APIResponse{
+		Success: true,
+		Message: "Company registered successfully",
+		Data: map[string]interface{}{
+			"company_id":   companyID,
+			"user_id":      userID,
+			"company_code": req.CompanyCode,
+		},
+	})
 }
 
-// formatCurrency formats a float as currency
-func formatCurrency(amount float64) string {
-	return fmt.Sprintf("₱%.2f", amount)
+// authMiddleware validates JWT token and adds user info to context
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, APIResponse{
+				Success: false,
+				Error:   "Authorization header required",
+			})
+			c.Abort()
+			return
+		}
+
+		// Remove "Bearer " prefix if present
+		if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+			tokenString = tokenString[7:]
+		}
+
+		secretKey := os.Getenv("JWT_SECRET")
+		if secretKey == "" {
+			secretKey = "your-secret-key"
+		}
+
+		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+			return []byte(secretKey), nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, APIResponse{
+				Success: false,
+				Error:   "Invalid or expired token",
+			})
+			c.Abort()
+			return
+		}
+
+		claims, ok := token.Claims.(*Claims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, APIResponse{
+				Success: false,
+				Error:   "Invalid token claims",
+			})
+			c.Abort()
+			return
+		}
+
+		// Check if user still exists and is active
+		var user User
+		err = db.QueryRow(`
+			SELECT id, company_id, username, email, first_name, last_name, role, is_active
+			FROM users 
+			WHERE id = ? AND company_id = ? AND is_active = true
+		`, claims.UserID, claims.CompanyID).Scan(
+			&user.ID, &user.CompanyID, &user.Username, &user.Email,
+			&user.FirstName, &user.LastName, &user.Role, &user.IsActive,
+		)
+
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, APIResponse{
+				Success: false,
+				Error:   "User not found or inactive",
+			})
+			c.Abort()
+			return
+		}
+
+		// Add user info to context
+		c.Set("user", user)
+		c.Set("company_id", claims.CompanyID)
+		c.Set("user_id", claims.UserID)
+		c.Next()
+	}
+}
+
+// checkTrialStatus checks if company trial is still active
+func checkTrialStatus() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		companyID := c.GetInt("company_id")
+
+		var trialEndsAt *time.Time
+		err := db.QueryRow("SELECT trial_ends_at FROM companies WHERE id = ?", companyID).Scan(&trialEndsAt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   "Failed to check trial status",
+			})
+			c.Abort()
+			return
+		}
+
+		if trialEndsAt != nil && time.Now().After(*trialEndsAt) {
+			c.JSON(http.StatusForbidden, APIResponse{
+				Success: false,
+				Error:   "Trial period has expired. Please contact support to upgrade.",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// getCurrentUser returns the current authenticated user
+func getCurrentUser(c *gin.Context) *User {
+	user, exists := c.Get("user")
+	if !exists {
+		return nil
+	}
+	if u, ok := user.(User); ok {
+		return &u
+	}
+	return nil
+}
+
+// getCurrentCompanyID returns the current company ID
+func getCurrentCompanyID(c *gin.Context) int {
+	companyID, exists := c.Get("company_id")
+	if !exists {
+		return 0
+	}
+	if id, ok := companyID.(int); ok {
+		return id
+	}
+	return 0
 } 
