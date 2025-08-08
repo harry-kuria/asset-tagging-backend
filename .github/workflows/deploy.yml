@@ -1,0 +1,337 @@
+name: 🚀 Deploy Asset Tagging Backend
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: asset-tagging-backend
+  INFRASTRUCTURE_REPO: harry-kuria/moowi-IAC
+
+jobs:
+  # Test the backend application
+  test:
+    name: 🧪 Test Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐹 Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.18'
+        cache: true
+        
+    - name: 📦 Install dependencies
+      run: go mod download
+      
+    - name: 🧪 Run tests
+      run: go test -v ./...
+      
+    - name: 🔍 Run linting
+      run: |
+        go install golang.org/x/lint/golint@latest
+        golint -set_exit_status ./...
+        
+    - name: 🔒 Run security scan
+      run: |
+        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        gosec ./...
+
+  # Build and push Docker image
+  build:
+    name: 🐳 Build & Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔑 Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: 🏗️ Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # Deploy to production
+  deploy:
+    name: 🚀 Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout infrastructure repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ env.INFRASTRUCTURE_REPO }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        path: infrastructure
+        
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 📦 Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.5.0"
+        
+    - name: 🔍 Terraform Format Check
+      working-directory: ./infrastructure/terraform
+      run: terraform fmt -check
+      
+    - name: ✅ Terraform Init
+      working-directory: ./infrastructure/terraform
+      run: terraform init
+      
+    - name: 📋 Terraform Plan
+      working-directory: ./infrastructure/terraform
+      run: terraform plan -out=tfplan
+      
+    - name: 🚀 Terraform Apply
+      working-directory: ./infrastructure/terraform
+      run: terraform apply -auto-approve tfplan
+      
+    - name: 📤 Get Terraform outputs
+      working-directory: ./infrastructure/terraform
+      run: |
+        echo "EC2_PUBLIC_IP=$(terraform output -raw app_instance_public_ip)" >> $GITHUB_ENV
+        echo "RDS_ENDPOINT=$(terraform output -raw database_endpoint)" >> $GITHUB_ENV
+        echo "LOAD_BALANCER_DNS=$(terraform output -raw load_balancer_dns)" >> $GITHUB_ENV
+
+  # Deploy application to EC2
+  deploy-application:
+    name: 🚀 Deploy Application
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout infrastructure repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ env.INFRASTRUCTURE_REPO }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        path: infrastructure
+        
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔑 Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ env.EC2_PUBLIC_IP }} >> ~/.ssh/known_hosts
+        
+    - name: 📋 Create deployment script
+      run: |
+        cat > deploy-to-server.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "🚀 Starting deployment..."
+        
+        # Update infrastructure repository
+        cd ~/moowi-IAC
+        git pull origin main
+        
+        # Stop current services
+        cd /opt/asset-tagging
+        sudo docker-compose down || true
+        
+        # Pull latest image
+        sudo docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+        
+        # Update docker-compose.yml with new image
+        sudo sed -i "s|image: .*asset-tagging-backend.*|image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest|g" docker-compose.yml
+        
+        # Start services
+        sudo docker-compose up -d
+        
+        # Wait for services to be ready
+        sleep 30
+        
+        # Health check
+        if curl -f http://localhost:5000/health; then
+          echo "✅ Application deployed successfully!"
+        else
+          echo "❌ Application health check failed!"
+          exit 1
+        fi
+        EOF
+        
+    - name: 🚀 Deploy to EC2
+      run: |
+        chmod +x deploy-to-server.sh
+        scp deploy-to-server.sh ubuntu@${{ env.EC2_PUBLIC_IP }}:~/
+        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "bash deploy-to-server.sh"
+
+  # Run database migrations
+  database-migration:
+    name: 🗄️ Database Migration
+    needs: deploy-application
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout infrastructure repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ env.INFRASTRUCTURE_REPO }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        path: infrastructure
+        
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔑 Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ env.EC2_PUBLIC_IP }} >> ~/.ssh/known_hosts
+        
+    - name: 📋 Create migration script
+      run: |
+        cat > run-migration.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "🗄️ Running database migration..."
+        
+        # Wait for database to be ready
+        for i in {1..10}; do
+          if mysql -h ${{ env.RDS_ENDPOINT }} -u admin -p'${{ secrets.DB_PASSWORD }}' -e "SELECT 1;" > /dev/null 2>&1; then
+            echo "✅ Database connection successful!"
+            break
+          else
+            echo "⏳ Attempt $i: Database not ready yet, waiting..."
+            sleep 30
+          fi
+        done
+        
+        # Run migration script
+        cd ~/moowi-IAC/deployment
+        sudo bash setup-ec2.sh
+        
+        echo "✅ Database migration completed!"
+        EOF
+        
+    - name: 🗄️ Run migration on EC2
+      run: |
+        chmod +x run-migration.sh
+        scp run-migration.sh ubuntu@${{ env.EC2_PUBLIC_IP }}:~/
+        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "bash run-migration.sh"
+
+  # Health check and monitoring
+  health-check:
+    name: 🏥 Health Check
+    needs: database-migration
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔑 Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ env.EC2_PUBLIC_IP }} >> ~/.ssh/known_hosts
+        
+    - name: 🏥 Run health checks
+      run: |
+        # Test application health
+        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:5000/health" || exit 1
+        
+        # Test Grafana
+        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:3000" || echo "⚠️ Grafana not responding"
+        
+        # Test Prometheus
+        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:9090" || echo "⚠️ Prometheus not responding"
+        
+        # Test load balancer
+        curl -f http://${{ env.LOAD_BALANCER_DNS }}/health || echo "⚠️ Load balancer not responding"
+        
+    - name: 📊 Check container status
+      run: |
+        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "sudo docker ps"
+        
+    - name: 📝 Deployment Summary
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo "🌐 Application URL: http://${{ env.LOAD_BALANCER_DNS }}"
+        echo "📊 Grafana URL: http://${{ env.EC2_PUBLIC_IP }}:3000"
+        echo "📈 Prometheus URL: http://${{ env.EC2_PUBLIC_IP }}:9090"
+        echo "🗄️ Database: ${{ env.RDS_ENDPOINT }}"
+
+  # Notify on completion
+  notify:
+    name: 📢 Notify
+    needs: [health-check]
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📧 Send notification
+      run: |
+        if [ "${{ needs.health-check.result }}" == "success" ]; then
+          echo "✅ Deployment successful!"
+          # Add your notification logic here (Slack, email, etc.)
+        else
+          echo "❌ Deployment failed!"
+          # Add your notification logic here
+        fi 
