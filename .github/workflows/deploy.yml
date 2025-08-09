@@ -51,7 +51,9 @@ jobs:
         
     - name: 🔒 Run security scan
       run: |
-        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+        go env -w GOFLAGS='-buildvcs=false'
+        go install github.com/securego/gosec/v2/cmd/gosec@v2.20.0
+        echo "$HOME/go/bin" >> $GITHUB_PATH
         gosec ./...
 
   # Build and push Docker image
