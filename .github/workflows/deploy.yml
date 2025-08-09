@@ -74,13 +74,17 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: 🏗️ Ensure ECR repository exists
+    - name: 🏗️ Ensure ECR repository exists and is mutable
       run: |
         aws ecr describe-repositories --repository-names $ECR_REPOSITORY >/dev/null 2>&1 || \
         aws ecr create-repository \
           --repository-name $ECR_REPOSITORY \
-          --image-tag-mutability IMMUTABLE \
+          --image-tag-mutability MUTABLE \
           --image-scanning-configuration scanOnPush=true
+        # Force mutability in case repo already existed and was immutable
+        aws ecr put-image-tag-mutability \
+          --repository-name $ECR_REPOSITORY \
+          --image-tag-mutability MUTABLE || true
       
     - name: 🔑 Login to Amazon ECR
       id: login-ecr
@@ -169,6 +173,10 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
+    - name: 🔑 Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
     - name: 🔑 Setup SSH
       run: |
         mkdir -p ~/.ssh
@@ -177,6 +185,8 @@ jobs:
         ssh-keyscan -H ${{ env.EC2_PUBLIC_IP }} >> ~/.ssh/known_hosts
         
     - name: 📋 Create deployment script
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
         cat > deploy-to-server.sh << 'EOF'
         #!/bin/bash
@@ -186,17 +196,17 @@ jobs:
         
         # Update infrastructure repository
         cd ~/moowi-IAC
-        git pull origin main
+        git pull origin main || true
         
         # Stop current services
         cd /opt/asset-tagging
         sudo docker-compose down || true
         
         # Pull latest image
-        sudo docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+        sudo docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
         
         # Update docker-compose.yml with new image
-        sudo sed -i "s|image: .*asset-tagging-backend.*|image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest|g" docker-compose.yml
+        sudo sed -i "s|image: .*asset-tagging-backend.*|image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest|g" docker-compose.yml
         
         # Start services
         sudo docker-compose up -d
