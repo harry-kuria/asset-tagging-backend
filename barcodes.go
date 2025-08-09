@@ -14,6 +14,14 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
+// safeString safely converts a nullable string to a regular string
+func safeString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // generateBarcodesHandler generates barcodes for specific assets
 func generateBarcodesHandler(c *gin.Context) {
 	var req BarcodeRequest
@@ -117,13 +125,13 @@ func generateBarcodesHandler(c *gin.Context) {
 		pdf.SetXY(10, float64(55+(i%2)*120))
 		pdf.Cell(80, 5, fmt.Sprintf("Asset: %s", asset.AssetName))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Type: %s", asset.AssetType))
+		pdf.Cell(80, 5, fmt.Sprintf("Type: %s", safeString(asset.AssetType)))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Institution: %s", asset.InstitutionName))
+		pdf.Cell(80, 5, fmt.Sprintf("Institution: %s", safeString(asset.InstitutionName)))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Department: %s", asset.Department))
+		pdf.Cell(80, 5, fmt.Sprintf("Department: %s", safeString(asset.Department)))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Location: %s", asset.Location))
+		pdf.Cell(80, 5, fmt.Sprintf("Location: %s", safeString(asset.Location)))
 		pdf.Ln(10)
 
 		// Clean up temporary file
@@ -249,11 +257,11 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 		pdf.SetXY(10, float64(55+(i%2)*120))
 		pdf.Cell(80, 5, fmt.Sprintf("Asset: %s", asset.AssetName))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Type: %s", asset.AssetType))
+		pdf.Cell(80, 5, fmt.Sprintf("Type: %s", safeString(asset.AssetType)))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Department: %s", asset.Department))
+		pdf.Cell(80, 5, fmt.Sprintf("Department: %s", safeString(asset.Department)))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Location: %s", asset.Location))
+		pdf.Cell(80, 5, fmt.Sprintf("Location: %s", safeString(asset.Location)))
 		pdf.Ln(10)
 
 		// Clean up temporary file
@@ -380,9 +388,9 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 		pdf.SetXY(10, float64(55+(i%2)*120))
 		pdf.Cell(80, 5, fmt.Sprintf("Asset: %s", asset.AssetName))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Type: %s", asset.AssetType))
+		pdf.Cell(80, 5, fmt.Sprintf("Type: %s", safeString(asset.AssetType)))
 		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Location: %s", asset.Location))
+		pdf.Cell(80, 5, fmt.Sprintf("Location: %s", safeString(asset.Location)))
 		pdf.Ln(5)
 		pdf.Cell(80, 5, fmt.Sprintf("Status: %s", asset.Status))
 		pdf.Ln(10)
@@ -419,14 +427,35 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 
 // generateBarcodeData creates the data string for barcode generation
 func generateBarcodeData(asset Asset) string {
+	// Handle nullable fields
+	assetType := ""
+	if asset.AssetType != nil {
+		assetType = *asset.AssetType
+	}
+	
+	institutionName := ""
+	if asset.InstitutionName != nil {
+		institutionName = *asset.InstitutionName
+	}
+	
+	department := ""
+	if asset.Department != nil {
+		department = *asset.Department
+	}
+	
+	location := ""
+	if asset.Location != nil {
+		location = *asset.Location
+	}
+
 	// Create a formatted string with asset information
 	data := fmt.Sprintf("ID:%d|Name:%s|Type:%s|Inst:%s|Dept:%s|Loc:%s",
 		asset.ID,
 		getShortName(asset.AssetName),
-		getShortForm(asset.AssetType),
-		getInstitutionInitials(asset.InstitutionName),
-		getShortName(asset.Department),
-		getShortName(asset.Location))
+		getShortForm(assetType),
+		getInstitutionInitials(institutionName),
+		getShortName(department),
+		getShortName(location))
 	
 	return data
 }

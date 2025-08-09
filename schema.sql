@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS asset_categories (
     FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
     UNIQUE KEY unique_category_per_company (company_id, name)
 );
-someone
+
 -- Assets table with company association
 CREATE TABLE IF NOT EXISTS assets (
     id INT AUTO_INCREMENT PRIMARY KEY,

@@ -78,6 +78,7 @@ type Asset struct {
 	Notes            *string   `json:"notes" db:"notes"`
 	Barcode          *string   `json:"barcode" db:"barcode"`
 	QRCode           *string   `json:"qr_code" db:"qr_code"`
+	Logo             *string   `json:"logo" db:"logo"`
 	CreatedBy        int       `json:"created_by" db:"created_by"`
 	CreatedAt        time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
@@ -218,6 +219,71 @@ type SearchAssetsRequest struct {
 	CategoryID      *int   `json:"category_id"`
 }
 
+// AssetRequest represents asset creation/update request (legacy compatibility)
+type AssetRequest struct {
+	AssetName       string  `json:"assetName" binding:"required"`
+	AssetType       string  `json:"assetType" binding:"required"`
+	InstitutionName string  `json:"institutionName"`
+	Department      string  `json:"department"`
+	FunctionalArea  string  `json:"functionalArea"`
+	Manufacturer    string  `json:"manufacturer"`
+	ModelNumber     string  `json:"modelNumber"`
+	SerialNumber    string  `json:"serialNumber"`
+	Location        string  `json:"location"`
+	Status          string  `json:"status"`
+	PurchaseDate    string  `json:"purchaseDate"`
+	PurchasePrice   float64 `json:"purchasePrice"`
+}
+
+// MultipleAssetRequest represents multiple asset creation request
+type MultipleAssetRequest struct {
+	Assets []AssetRequest `json:"assets" binding:"required"`
+}
+
+// BarcodeRequest represents barcode generation request
+type BarcodeRequest struct {
+	AssetIDs []int `json:"assetIds" binding:"required"`
+}
+
+// InstitutionBarcodeRequest represents institution-based barcode generation
+type InstitutionBarcodeRequest struct {
+	Institution string `json:"institution" binding:"required"`
+}
+
+// InstitutionDepartmentBarcodeRequest represents institution and department barcode generation
+type InstitutionDepartmentBarcodeRequest struct {
+	Institution string `json:"institution" binding:"required"`
+	Department  string `json:"department" binding:"required"`
+}
+
+// ReportRequest represents report generation request
+type ReportRequest struct {
+	AssetType       string   `json:"assetType"`
+	Location        string   `json:"location"`
+	Status          string   `json:"status"`
+	StartDate       string   `json:"startDate"`
+	EndDate         string   `json:"endDate"`
+	Manufacturer    []string `json:"manufacturer"`
+	ModelNumber     string   `json:"modelNumber"`
+	InstitutionName string   `json:"institutionName"`
+	Department      string   `json:"department"`
+	FunctionalArea  string   `json:"functionalArea"`
+}
+
+// InvoiceRequest represents invoice generation request
+type InvoiceRequest struct {
+	CustomerName    string  `json:"customerName" binding:"required"`
+	CustomerAddress string  `json:"customerAddress" binding:"required"`
+	Items           []InvoiceItem `json:"items" binding:"required"`
+}
+
+// InvoiceItem represents an item in an invoice
+type InvoiceItem struct {
+	Description string  `json:"description" binding:"required"`
+	Quantity    int     `json:"quantity" binding:"required"`
+	UnitPrice   float64 `json:"unitPrice" binding:"required"`
+}
+
 // AddCategoryRequest represents adding an asset category
 type AddCategoryRequest struct {
 	Name        string `json:"name" binding:"required"`
@@ -258,15 +324,6 @@ type PaginatedResponse struct {
 	TotalPages int         `json:"total_pages"`
 }
 
-// Claims represents JWT claims
-type Claims struct {
-	UserID    int    `json:"user_id"`
-	CompanyID int    `json:"company_id"`
-	Username  string `json:"username"`
-	Role      string `json:"role"`
-	Exp       int64  `json:"exp"`
-}
-
 // DashboardStats represents dashboard statistics
 type DashboardStats struct {
 	TotalAssets     int     `json:"total_assets"`
@@ -277,4 +334,4 @@ type DashboardStats struct {
 	AssetsByType    map[string]int `json:"assets_by_type"`
 	RecentAssets    []Asset `json:"recent_assets"`
 	RecentMaintenance []AssetMaintenance `json:"recent_maintenance"`
-} 
+}

@@ -469,36 +469,6 @@ func getFunctionalAreasHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, functionalAreas)
 }
 
-// getCategoriesHandler returns all asset categories
-func getCategoriesHandler(c *gin.Context) {
-	rows, err := db.Query("SELECT id, name FROM asset_categories")
-	if err != nil {
-		log.Printf("Error fetching categories: %v", err)
-		c.JSON(http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Error:   "Internal Server Error",
-		})
-		return
-	}
-	defer rows.Close()
-
-	var categories []gin.H
-	for rows.Next() {
-		var category AssetCategory
-		err := rows.Scan(&category.ID, &category.Name)
-		if err != nil {
-			log.Printf("Error scanning category: %v", err)
-			continue
-		}
-		categories = append(categories, gin.H{
-			"id":   category.ID,
-			"name": category.Name,
-		})
-	}
-
-	c.JSON(http.StatusOK, categories)
-}
-
 // getManufacturersHandler returns all unique manufacturers
 func getManufacturersHandler(c *gin.Context) {
 	rows, err := db.Query("SELECT DISTINCT manufacturer FROM assets WHERE manufacturer IS NOT NULL")
