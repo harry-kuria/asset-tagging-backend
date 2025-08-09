@@ -115,6 +115,7 @@ jobs:
         repository: ${{ env.INFRASTRUCTURE_REPO }}
         token: ${{ secrets.GH_PAT || github.token }}
         path: infrastructure
+        ref: main
         
     - name: 🔐 Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -165,6 +166,7 @@ jobs:
         repository: ${{ env.INFRASTRUCTURE_REPO }}
         token: ${{ secrets.GH_PAT || github.token }}
         path: infrastructure
+        ref: main
         
     - name: 🔐 Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -243,6 +245,7 @@ jobs:
         repository: ${{ env.INFRASTRUCTURE_REPO }}
         token: ${{ secrets.GH_PAT || github.token }}
         path: infrastructure
+        ref: main
         
     - name: 🔐 Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
