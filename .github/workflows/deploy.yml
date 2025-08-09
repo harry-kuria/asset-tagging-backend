@@ -20,7 +20,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: asset-tagging-backend
-  INFRASTRUCTURE_REPO: harry-kuria/moowi-IAC
+  INFRASTRUCTURE_REPO: harry-kuria/asset-tagging-infrastructure
 
 jobs:
   # Test the backend application
@@ -109,7 +109,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: ${{ env.INFRASTRUCTURE_REPO }}
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GH_PAT }}
         path: infrastructure
         
     - name: 🔐 Configure AWS credentials
@@ -159,7 +159,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: ${{ env.INFRASTRUCTURE_REPO }}
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GH_PAT }}
         path: infrastructure
         
     - name: 🔐 Configure AWS credentials
@@ -231,7 +231,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: ${{ env.INFRASTRUCTURE_REPO }}
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GH_PAT }}
         path: infrastructure
         
     - name: 🔐 Configure AWS credentials
