@@ -131,7 +131,9 @@ jobs:
         
     - name: 🔍 Terraform Format Check
       working-directory: ./infrastructure/terraform
-      run: terraform fmt -check
+      run: |
+        terraform fmt -recursive
+        terraform fmt -recursive -check -diff
       
     - name: ✅ Terraform Init
       working-directory: ./infrastructure/terraform
