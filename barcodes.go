@@ -104,22 +104,22 @@ func generateBarcodesHandler(c *gin.Context) {
 		}
 
 		// Save barcode as image
-		barcodeFilename := fmt.Sprintf("barcode_%d.png", asset.ID)
-		file, err := os.Create(barcodeFilename)
+		tmpFile, err := os.CreateTemp("", fmt.Sprintf("barcode_%d_*.png", asset.ID))
 		if err != nil {
-			log.Printf("Error creating barcode file: %v", err)
+			log.Printf("Error creating barcode temp file: %v", err)
 			continue
 		}
-		
-		err = png.Encode(file, scaledCode)
-		file.Close()
-		if err != nil {
-			log.Printf("Error saving barcode: %v", err)
+		if err := png.Encode(tmpFile, scaledCode); err != nil {
+			_ = tmpFile.Close()
+			log.Printf("Error encoding barcode: %v", err)
 			continue
+		}
+		if err := tmpFile.Close(); err != nil {
+			log.Printf("Error closing barcode file: %v", err)
 		}
 
 		// Add barcode to PDF
-		pdf.Image(barcodeFilename, 10, float64(30+(i%2)*120), 80, 20, false, "", 0, "")
+		pdf.Image(tmpFile.Name(), 10, float64(30+(i%2)*120), 80, 20, false, "", 0, "")
 		
 		// Add asset details
 		pdf.SetXY(10, float64(55+(i%2)*120))
@@ -135,7 +135,9 @@ func generateBarcodesHandler(c *gin.Context) {
 		pdf.Ln(10)
 
 		// Clean up temporary file
-		os.Remove(barcodeFilename)
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			log.Printf("Error removing temp barcode file: %v", err)
+		}
 	}
 
 	// Save PDF
@@ -236,22 +238,22 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 		}
 
 		// Save barcode as image
-		barcodeFilename := fmt.Sprintf("barcode_%d.png", asset.ID)
-		file, err := os.Create(barcodeFilename)
+		tmpFile, err := os.CreateTemp("", fmt.Sprintf("barcode_%d_*.png", asset.ID))
 		if err != nil {
-			log.Printf("Error creating barcode file: %v", err)
+			log.Printf("Error creating barcode temp file: %v", err)
 			continue
 		}
-		
-		err = png.Encode(file, scaledCode)
-		file.Close()
-		if err != nil {
-			log.Printf("Error saving barcode: %v", err)
+		if err := png.Encode(tmpFile, scaledCode); err != nil {
+			_ = tmpFile.Close()
+			log.Printf("Error encoding barcode: %v", err)
 			continue
+		}
+		if err := tmpFile.Close(); err != nil {
+			log.Printf("Error closing barcode file: %v", err)
 		}
 
 		// Add barcode to PDF
-		pdf.Image(barcodeFilename, 10, float64(30+(i%2)*120), 80, 20, false, "", 0, "")
+		pdf.Image(tmpFile.Name(), 10, float64(30+(i%2)*120), 80, 20, false, "", 0, "")
 		
 		// Add asset details
 		pdf.SetXY(10, float64(55+(i%2)*120))
@@ -265,7 +267,9 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 		pdf.Ln(10)
 
 		// Clean up temporary file
-		os.Remove(barcodeFilename)
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			log.Printf("Error removing temp barcode file: %v", err)
+		}
 	}
 
 	// Save PDF
@@ -367,22 +371,22 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 		}
 
 		// Save barcode as image
-		barcodeFilename := fmt.Sprintf("barcode_%d.png", asset.ID)
-		file, err := os.Create(barcodeFilename)
+		tmpFile, err := os.CreateTemp("", fmt.Sprintf("barcode_%d_*.png", asset.ID))
 		if err != nil {
-			log.Printf("Error creating barcode file: %v", err)
+			log.Printf("Error creating barcode temp file: %v", err)
 			continue
 		}
-		
-		err = png.Encode(file, scaledCode)
-		file.Close()
-		if err != nil {
-			log.Printf("Error saving barcode: %v", err)
+		if err := png.Encode(tmpFile, scaledCode); err != nil {
+			_ = tmpFile.Close()
+			log.Printf("Error encoding barcode: %v", err)
 			continue
+		}
+		if err := tmpFile.Close(); err != nil {
+			log.Printf("Error closing barcode file: %v", err)
 		}
 
 		// Add barcode to PDF
-		pdf.Image(barcodeFilename, 10, float64(30+(i%2)*120), 80, 20, false, "", 0, "")
+		pdf.Image(tmpFile.Name(), 10, float64(30+(i%2)*120), 80, 20, false, "", 0, "")
 		
 		// Add asset details
 		pdf.SetXY(10, float64(55+(i%2)*120))
@@ -396,7 +400,9 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 		pdf.Ln(10)
 
 		// Clean up temporary file
-		os.Remove(barcodeFilename)
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			log.Printf("Error removing temp barcode file: %v", err)
+		}
 	}
 
 	// Save PDF

@@ -236,26 +236,28 @@ func generateAssetReportHandler(c *gin.Context) {
 	headers := []string{"ID", "Asset Name", "Asset Type", "Institution", "Department", "Functional Area", "Manufacturer", "Model Number", "Serial Number", "Location", "Status", "Purchase Date", "Purchase Price", "Created At"}
 	for i, header := range headers {
 		cell := fmt.Sprintf("%c1", 'A'+i)
-		f.SetCellValue("Sheet1", cell, header)
+		if err := f.SetCellValue("Sheet1", cell, header); err != nil {
+			log.Printf("Error setting header cell %s: %v", cell, err)
+		}
 	}
 
 	// Add data
 	for i, asset := range assets {
 		row := i + 2
-		f.SetCellValue("Sheet1", fmt.Sprintf("A%d", row), asset.ID)
-		f.SetCellValue("Sheet1", fmt.Sprintf("B%d", row), asset.AssetName)
-		f.SetCellValue("Sheet1", fmt.Sprintf("C%d", row), asset.AssetType)
-		f.SetCellValue("Sheet1", fmt.Sprintf("D%d", row), asset.InstitutionName)
-		f.SetCellValue("Sheet1", fmt.Sprintf("E%d", row), asset.Department)
-		f.SetCellValue("Sheet1", fmt.Sprintf("F%d", row), asset.FunctionalArea)
-		f.SetCellValue("Sheet1", fmt.Sprintf("G%d", row), asset.Manufacturer)
-		f.SetCellValue("Sheet1", fmt.Sprintf("H%d", row), asset.ModelNumber)
-		f.SetCellValue("Sheet1", fmt.Sprintf("I%d", row), asset.SerialNumber)
-		f.SetCellValue("Sheet1", fmt.Sprintf("J%d", row), asset.Location)
-		f.SetCellValue("Sheet1", fmt.Sprintf("K%d", row), asset.Status)
-		f.SetCellValue("Sheet1", fmt.Sprintf("L%d", row), asset.PurchaseDate.Format("2006-01-02"))
-		f.SetCellValue("Sheet1", fmt.Sprintf("M%d", row), asset.PurchasePrice)
-		f.SetCellValue("Sheet1", fmt.Sprintf("N%d", row), asset.CreatedAt.Format("2006-01-02 15:04:05"))
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("A%d", row), asset.ID); err != nil { log.Printf("SetCellValue A: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("B%d", row), asset.AssetName); err != nil { log.Printf("SetCellValue B: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("C%d", row), asset.AssetType); err != nil { log.Printf("SetCellValue C: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("D%d", row), asset.InstitutionName); err != nil { log.Printf("SetCellValue D: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("E%d", row), asset.Department); err != nil { log.Printf("SetCellValue E: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("F%d", row), asset.FunctionalArea); err != nil { log.Printf("SetCellValue F: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("G%d", row), asset.Manufacturer); err != nil { log.Printf("SetCellValue G: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("H%d", row), asset.ModelNumber); err != nil { log.Printf("SetCellValue H: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("I%d", row), asset.SerialNumber); err != nil { log.Printf("SetCellValue I: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("J%d", row), asset.Location); err != nil { log.Printf("SetCellValue J: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("K%d", row), asset.Status); err != nil { log.Printf("SetCellValue K: %v", err) }
+		if asset.PurchaseDate != nil { if err := f.SetCellValue("Sheet1", fmt.Sprintf("L%d", row), asset.PurchaseDate.Format("2006-01-02")); err != nil { log.Printf("SetCellValue L: %v", err) } }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("M%d", row), asset.PurchasePrice); err != nil { log.Printf("SetCellValue M: %v", err) }
+		if err := f.SetCellValue("Sheet1", fmt.Sprintf("N%d", row), asset.CreatedAt.Format("2006-01-02 15:04:05")); err != nil { log.Printf("SetCellValue N: %v", err) }
 	}
 
 	// Save file
