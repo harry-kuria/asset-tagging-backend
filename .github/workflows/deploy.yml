@@ -20,7 +20,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: asset-tagging-backend
-  INFRASTRUCTURE_REPO: harry-kuria/asset-tagging-infrastructure
+  INFRASTRUCTURE_REPO: harry-kuria/moowi-IAC
 
 jobs:
   # Test the backend application
