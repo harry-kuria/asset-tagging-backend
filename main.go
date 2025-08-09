@@ -74,6 +74,9 @@ func main() {
 		public.POST("/register/company", registerCompanyHandler)
 	}
 
+	// Backward-compatible alias (legacy clients hitting /create-account)
+	r.POST("/create-account", registerCompanyHandler)
+
 	// Protected routes (authentication required)
 	protected := r.Group("/api")
 	protected.Use(authMiddleware())
