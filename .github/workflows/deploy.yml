@@ -137,15 +137,24 @@ jobs:
       
     - name: ✅ Terraform Init
       working-directory: ./infrastructure/terraform
+      env:
+        TF_IN_AUTOMATION: 'true'
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
       run: terraform init
       
     - name: 📋 Terraform Plan
       working-directory: ./infrastructure/terraform
-      run: terraform plan -out=tfplan
+      env:
+        TF_IN_AUTOMATION: 'true'
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      run: terraform plan -input=false -out=tfplan
       
     - name: 🚀 Terraform Apply
       working-directory: ./infrastructure/terraform
-      run: terraform apply -auto-approve tfplan
+      env:
+        TF_IN_AUTOMATION: 'true'
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      run: terraform apply -input=false -auto-approve tfplan
       
     - name: 📤 Get Terraform outputs
       working-directory: ./infrastructure/terraform
