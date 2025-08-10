@@ -180,6 +180,26 @@ jobs:
         TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
       run: terraform init
       
+    - name: 🔎 Discover existing DB instance (if any)
+      run: |
+        set -e
+        echo "Checking for pre-existing RDS instance with identifier asset-tagging-db..."
+        DB_EXISTS=$(aws rds describe-db-instances --region $AWS_REGION --db-instance-identifier asset-tagging-db >/dev/null 2>&1 && echo yes || echo no)
+        echo "DB_EXISTS=${DB_EXISTS}" >> $GITHUB_ENV
+      
+    - name: 🧭 Import existing DB instance (one-time)
+      if: env.DB_EXISTS == 'yes'
+      working-directory: ./infrastructure/terraform
+      env:
+        TF_IN_AUTOMATION: 'true'
+        TF_INPUT: 'false'
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
+      run: |
+        terraform import aws_db_instance.main asset-tagging-db || true
+        # Re-run init to refresh state if needed
+        terraform init -reconfigure || true
+      
     - name: 📋 Terraform Plan
       working-directory: ./infrastructure/terraform
       env:
