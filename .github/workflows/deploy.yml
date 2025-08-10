@@ -288,6 +288,12 @@ jobs:
         # Stop current services
         cd /opt/asset-tagging
         sudo docker-compose down || true
+
+        echo "🧹 Pruning unused Docker images and containers to free space..."
+        sudo docker system df || true
+        sudo docker container prune -f || true
+        sudo docker image prune -af || true
+        sudo docker system df || true
         
         # Pull latest image
         sudo docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
@@ -298,16 +304,17 @@ jobs:
         # Start services
         sudo docker-compose up -d
         
-        # Wait for services to be ready
-        sleep 30
-        
-        # Health check
-        if curl -f http://localhost:5000/health; then
-          echo "✅ Application deployed successfully!"
-        else
-          echo "❌ Application health check failed!"
-          exit 1
-        fi
+        echo "⏳ Waiting for services to be ready..."
+        for i in {1..10}; do
+          if curl -fsS http://localhost:5000/health > /dev/null; then
+            echo "✅ Application deployed successfully!"
+            exit 0
+          fi
+          echo "Attempt $i/10: service not ready yet, waiting 10s..."
+          sleep 10
+        done
+        echo "❌ Application health check failed after retries!"
+        exit 1
         EOF
         
     - name: 🚀 Deploy to EC2
