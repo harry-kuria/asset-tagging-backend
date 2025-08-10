@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: ''
+      ssh_user:
+        description: 'SSH username for EC2 (e.g., ubuntu, ec2-user)'
+        required: false
+        type: string
+        default: 'ubuntu'
 
 env:
   AWS_REGION: us-east-1
@@ -242,6 +247,7 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     env:
       EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
+      SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || secrets.EC2_SSH_USER }}
     
     steps:
     - name: 📥 Checkout infrastructure repo
@@ -266,9 +272,12 @@ jobs:
     - name: 🔑 Setup SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY_B64 }}" ]; then echo "EC2_SSH_PRIVATE_KEY_B64 secret is required and not set."; exit 1; fi
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+        ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "Invalid SSH private key in secrets (format or passphrase)."; exit 1; }
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
+        : "${SSH_USER:=ubuntu}"
         ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
         
     - name: 📋 Create deployment script
@@ -320,8 +329,9 @@ jobs:
     - name: 🚀 Deploy to EC2
       run: |
         chmod +x deploy-to-server.sh
-        scp deploy-to-server.sh ubuntu@${{ env.EC2_PUBLIC_IP }}:~/
-        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "bash deploy-to-server.sh"
+        : "${SSH_USER:=ubuntu}"
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-to-server.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "bash deploy-to-server.sh"
 
   # Run database migrations
   database-migration:
@@ -332,6 +342,7 @@ jobs:
     env:
       EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
       RDS_ENDPOINT: ${{ inputs.rds_endpoint != '' && inputs.rds_endpoint || secrets.RDS_ENDPOINT }}
+      SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || secrets.EC2_SSH_USER }}
     
     steps:
     - name: 📥 Checkout infrastructure repo
@@ -352,9 +363,12 @@ jobs:
     - name: 🔑 Setup SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY_B64 }}" ]; then echo "EC2_SSH_PRIVATE_KEY_B64 secret is required and not set."; exit 1; fi
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+        ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "Invalid SSH private key in secrets (format or passphrase)."; exit 1; }
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
+        : "${SSH_USER:=ubuntu}"
         ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
         
     - name: 📋 Create migration script
@@ -386,8 +400,9 @@ jobs:
     - name: 🗄️ Run migration on EC2
       run: |
         chmod +x run-migration.sh
-        scp run-migration.sh ubuntu@${{ env.EC2_PUBLIC_IP }}:~/
-        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "bash run-migration.sh"
+        : "${SSH_USER:=ubuntu}"
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa run-migration.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "bash run-migration.sh"
 
   # Health check and monitoring
   health-check:
@@ -398,6 +413,7 @@ jobs:
     env:
       EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
       LOAD_BALANCER_DNS: ${{ inputs.load_balancer_dns != '' && inputs.load_balancer_dns || secrets.LOAD_BALANCER_DNS }}
+      SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || secrets.EC2_SSH_USER }}
     
     steps:
     - name: 🔐 Configure AWS credentials
@@ -410,28 +426,33 @@ jobs:
     - name: 🔑 Setup SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY_B64 }}" ]; then echo "EC2_SSH_PRIVATE_KEY_B64 secret is required and not set."; exit 1; fi
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+        ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "Invalid SSH private key in secrets (format or passphrase)."; exit 1; }
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
+        : "${SSH_USER:=ubuntu}"
         ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
         
     - name: 🏥 Run health checks
       run: |
+        : "${SSH_USER:=ubuntu}"
         # Test application health
-        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:5000/health" || exit 1
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:5000/health" || exit 1
         
         # Test Grafana
-        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:3000" || echo "⚠️ Grafana not responding"
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:3000" || echo "⚠️ Grafana not responding"
         
         # Test Prometheus
-        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:9090" || echo "⚠️ Prometheus not responding"
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:9090" || echo "⚠️ Prometheus not responding"
         
         # Test load balancer
         curl -f http://${{ env.LOAD_BALANCER_DNS }}/health || echo "⚠️ Load balancer not responding"
         
     - name: 📊 Check container status
       run: |
-        ssh ubuntu@${{ env.EC2_PUBLIC_IP }} "sudo docker ps"
+        : "${SSH_USER:=ubuntu}"
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "sudo docker ps"
         
     - name: 📝 Deployment Summary
       run: |
