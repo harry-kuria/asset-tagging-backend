@@ -152,6 +152,11 @@ jobs:
 
     - name: 🧭 Import pre-existing resources (one-time)
       working-directory: ./infrastructure/terraform
+      env:
+        TF_IN_AUTOMATION: 'true'
+        TF_INPUT: 'false'
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
       run: |
         terraform import aws_db_subnet_group.main asset-tagging-db-subnet-group || true
         if [ -n "${{ env.ALB_ARN }}" ] && [ "${{ env.ALB_ARN }}" != "None" ]; then terraform import aws_lb.main "${{ env.ALB_ARN }}" || true; fi
