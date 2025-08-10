@@ -161,6 +161,22 @@ jobs:
         terraform import aws_db_subnet_group.main asset-tagging-db-subnet-group || true
         if [ -n "${{ env.ALB_ARN }}" ] && [ "${{ env.ALB_ARN }}" != "None" ]; then terraform import aws_lb.main "${{ env.ALB_ARN }}" || true; fi
         if [ -n "${{ env.TG_ARN }}" ] && [ "${{ env.TG_ARN }}" != "None" ]; then terraform import aws_lb_target_group.main "${{ env.TG_ARN }}" || true; fi
+
+    - name: ⏬ Speed up TG replacement (optional)
+      if: env.TG_ARN && env.TG_ARN != 'None'
+      run: |
+        echo "Modifying TG deregistration delay to 30s for $TG_ARN (if exists)"
+        aws elbv2 modify-target-group-attributes \
+          --target-group-arn "$TG_ARN" \
+          --attributes Key=deregistration_delay.timeout_seconds,Value=30 || true
+        echo "Deregistering any registered targets to avoid long drain..."
+        TARGET_IDS=$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" --query 'TargetHealthDescriptions[].Target.Id' --output text 2>/dev/null || true)
+        for id in $TARGET_IDS; do
+          echo "Deregistering target $id"
+          aws elbv2 deregister-targets --target-group-arn "$TG_ARN" --targets Id=$id || true
+        done
+        echo "Waiting 30s for cleanup"
+        sleep 30
         
     - name: 📋 Terraform Plan
       working-directory: ./infrastructure/terraform
