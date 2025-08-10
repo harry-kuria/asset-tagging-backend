@@ -102,7 +102,7 @@ jobs:
     name: 🚀 Deploy to Production
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
+    if: false
     
     steps:
     - name: 📥 Checkout infrastructure repo
@@ -217,12 +217,7 @@ jobs:
         TF_VAR_manage_db: 'false'
       run: terraform apply -input=false -auto-approve tfplan
       
-    - name: 📤 Get Terraform outputs
-      working-directory: ./infrastructure/terraform
-      run: |
-        echo "EC2_PUBLIC_IP=${EC2_PUBLIC_IP}" >> $GITHUB_ENV
-        echo "RDS_ENDPOINT=${RDS_ENDPOINT}" >> $GITHUB_ENV
-        echo "LOAD_BALANCER_DNS=${LOAD_BALANCER_DNS}" >> $GITHUB_ENV
+    # Terraform outputs step removed because provisioning is disabled
 
   # Deploy application to EC2
   deploy-application:
@@ -311,6 +306,9 @@ jobs:
     needs: deploy-application
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
+    env:
+      EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
+      RDS_ENDPOINT: ${{ secrets.RDS_ENDPOINT }}
     
     steps:
     - name: 📥 Checkout infrastructure repo
@@ -373,6 +371,9 @@ jobs:
     needs: database-migration
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
+    env:
+      EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
+      LOAD_BALANCER_DNS: ${{ secrets.LOAD_BALANCER_DNS }}
     
     steps:
     - name: 🔐 Configure AWS credentials
