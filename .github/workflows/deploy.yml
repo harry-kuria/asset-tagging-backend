@@ -177,6 +177,18 @@ jobs:
         done
         echo "Waiting 30s for cleanup"
         sleep 30
+
+    - name: 🧹 Detach ALB listeners to unblock TG deletion (one-time)
+      if: env.ALB_ARN && env.ALB_ARN != 'None'
+      run: |
+        echo "Fetching listeners for ALB $ALB_ARN"
+        LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[].ListenerArn' --output text 2>/dev/null || true)
+        for L in $LISTENERS; do
+          echo "Deleting listener $L"
+          aws elbv2 delete-listener --listener-arn "$L" || true
+        done
+        echo "Listeners deleted (if any)."
+        sleep 5
         
     - name: 📋 Terraform Plan
       working-directory: ./infrastructure/terraform
