@@ -273,7 +273,12 @@ jobs:
       run: |
         mkdir -p ~/.ssh
         if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY secret is required and not set."; exit 1; fi
-        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa
+        KEY_CONTENT='${{ secrets.EC2_SSH_PRIVATE_KEY }}'
+        if echo "$KEY_CONTENT" | grep -q "BEGIN .*PRIVATE KEY"; then
+          printf "%s\n" "$KEY_CONTENT" | sed 's/\r$//' > ~/.ssh/id_rsa
+        else
+          printf "%s" "$KEY_CONTENT" | tr -d '\r' | base64 -d --ignore-garbage > ~/.ssh/id_rsa 2>/dev/null || { echo "EC2_SSH_PRIVATE_KEY is neither a valid PEM nor valid base64-encoded PEM."; exit 1; }
+        fi
         chmod 600 ~/.ssh/id_rsa
         ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "Invalid SSH private key in secrets (format or passphrase)."; exit 1; }
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
@@ -364,7 +369,12 @@ jobs:
       run: |
         mkdir -p ~/.ssh
         if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY secret is required and not set."; exit 1; fi
-        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa
+        KEY_CONTENT='${{ secrets.EC2_SSH_PRIVATE_KEY }}'
+        if echo "$KEY_CONTENT" | grep -q "BEGIN .*PRIVATE KEY"; then
+          printf "%s\n" "$KEY_CONTENT" | sed 's/\r$//' > ~/.ssh/id_rsa
+        else
+          printf "%s" "$KEY_CONTENT" | tr -d '\r' | base64 -d --ignore-garbage > ~/.ssh/id_rsa 2>/dev/null || { echo "EC2_SSH_PRIVATE_KEY is neither a valid PEM nor valid base64-encoded PEM."; exit 1; }
+        fi
         chmod 600 ~/.ssh/id_rsa
         ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "Invalid SSH private key in secrets (format or passphrase)."; exit 1; }
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
@@ -427,7 +437,12 @@ jobs:
       run: |
         mkdir -p ~/.ssh
         if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY secret is required and not set."; exit 1; fi
-        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa
+        KEY_CONTENT='${{ secrets.EC2_SSH_PRIVATE_KEY }}'
+        if echo "$KEY_CONTENT" | grep -q "BEGIN .*PRIVATE KEY"; then
+          printf "%s\n" "$KEY_CONTENT" | sed 's/\r$//' > ~/.ssh/id_rsa
+        else
+          printf "%s" "$KEY_CONTENT" | tr -d '\r' | base64 -d --ignore-garbage > ~/.ssh/id_rsa 2>/dev/null || { echo "EC2_SSH_PRIVATE_KEY is neither a valid PEM nor valid base64-encoded PEM."; exit 1; }
+        fi
         chmod 600 ~/.ssh/id_rsa
         ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "Invalid SSH private key in secrets (format or passphrase)."; exit 1; }
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
