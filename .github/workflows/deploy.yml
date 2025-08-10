@@ -178,6 +178,7 @@ jobs:
         TF_IN_AUTOMATION: 'true'
         TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
         TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
+        TF_VAR_manage_db: 'false'
       run: terraform init
       
     - name: 🔎 Discover existing DB instance (if any)
@@ -206,6 +207,7 @@ jobs:
         TF_IN_AUTOMATION: 'true'
         TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
         TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
+        TF_VAR_manage_db: 'false'
       run: terraform plan -input=false -out=tfplan
       
     - name: 🚀 Terraform Apply
@@ -214,6 +216,7 @@ jobs:
         TF_IN_AUTOMATION: 'true'
         TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
         TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
+        TF_VAR_manage_db: 'false'
       run: terraform apply -input=false -auto-approve tfplan
       
     - name: 📤 Get Terraform outputs
