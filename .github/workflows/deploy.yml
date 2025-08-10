@@ -57,7 +57,7 @@ jobs:
     name: 🐳 Build & Push Docker Image
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
     
     steps:
     - name: 📥 Checkout code
@@ -99,7 +99,7 @@ jobs:
 
   # Deploy to production
   deploy:
-    name: 🚀 Deploy to Production
+    name: 🚫 Provision Infrastructure (disabled)
     needs: build
     runs-on: ubuntu-latest
     if: false
@@ -224,7 +224,7 @@ jobs:
     name: 🚀 Deploy Application
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     env:
       EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
     
