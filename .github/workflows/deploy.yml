@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      deploy_only:
+        description: 'Skip Terraform and deploy to existing EC2 only'
+        required: false
+        type: boolean
+        default: false
 
 env:
   AWS_REGION: us-east-1
@@ -96,7 +102,7 @@ jobs:
     name: 🚀 Deploy to Production
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
     
     steps:
     - name: 📥 Checkout infrastructure repo
@@ -214,16 +220,18 @@ jobs:
     - name: 📤 Get Terraform outputs
       working-directory: ./infrastructure/terraform
       run: |
-        echo "EC2_PUBLIC_IP=$(terraform output -raw app_instance_public_ip)" >> $GITHUB_ENV
-        echo "RDS_ENDPOINT=$(terraform output -raw database_endpoint)" >> $GITHUB_ENV
-        echo "LOAD_BALANCER_DNS=$(terraform output -raw load_balancer_dns)" >> $GITHUB_ENV
+        echo "EC2_PUBLIC_IP=${EC2_PUBLIC_IP}" >> $GITHUB_ENV
+        echo "RDS_ENDPOINT=${RDS_ENDPOINT}" >> $GITHUB_ENV
+        echo "LOAD_BALANCER_DNS=${LOAD_BALANCER_DNS}" >> $GITHUB_ENV
 
   # Deploy application to EC2
   deploy-application:
     name: 🚀 Deploy Application
-    needs: deploy
+    needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    env:
+      EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
     
     steps:
     - name: 📥 Checkout infrastructure repo
@@ -302,7 +310,7 @@ jobs:
     name: 🗄️ Database Migration
     needs: deploy-application
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
     
     steps:
     - name: 📥 Checkout infrastructure repo
@@ -364,7 +372,7 @@ jobs:
     name: 🏥 Health Check
     needs: database-migration
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
     
     steps:
     - name: 🔐 Configure AWS credentials
