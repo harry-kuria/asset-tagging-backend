@@ -124,6 +124,43 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
+    - name: 🧹 Pre-clean conflicting named resources (safe, idempotent)
+      run: |
+        set -e
+        echo "Checking for pre-existing resources that may conflict with names..."
+        ALB_ARN=$(aws elbv2 describe-load-balancers --region $AWS_REGION --names asset-tagging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || echo "None")
+        TG_ARN=$(aws elbv2 describe-target-groups --region $AWS_REGION --names asset-tagging-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "None")
+        # Delete listeners if ALB exists
+        if [ "$ALB_ARN" != "None" ] && [ -n "$ALB_ARN" ]; then
+          echo "Found existing ALB: $ALB_ARN. Deleting listeners..."
+          LISTENERS=$(aws elbv2 describe-listeners --region $AWS_REGION --load-balancer-arn "$ALB_ARN" --query 'Listeners[].ListenerArn' --output text 2>/dev/null || true)
+          for L in $LISTENERS; do
+            aws elbv2 delete-listener --region $AWS_REGION --listener-arn "$L" || true
+          done
+          echo "Deleting ALB..."
+          aws elbv2 delete-load-balancer --region $AWS_REGION --load-balancer-arn "$ALB_ARN" || true
+          aws elbv2 wait load-balancer-deleted --region $AWS_REGION --load-balancer-arns "$ALB_ARN" || true
+        else
+          echo "No pre-existing ALB found."
+        fi
+        # Delete target group
+        if [ "$TG_ARN" != "None" ] && [ -n "$TG_ARN" ]; then
+          echo "Found existing TG: $TG_ARN. Deregistering targets and deleting TG..."
+          aws elbv2 modify-target-group-attributes --region $AWS_REGION --target-group-arn "$TG_ARN" --attributes Key=deregistration_delay.timeout_seconds,Value=30 || true
+          TARGET_IDS=$(aws elbv2 describe-target-health --region $AWS_REGION --target-group-arn "$TG_ARN" --query 'TargetHealthDescriptions[].Target.Id' --output text 2>/dev/null || true)
+          for id in $TARGET_IDS; do
+            aws elbv2 deregister-targets --region $AWS_REGION --target-group-arn "$TG_ARN" --targets Id=$id || true
+          done
+          sleep 10
+          aws elbv2 delete-target-group --region $AWS_REGION --target-group-arn "$TG_ARN" || true
+        else
+          echo "No pre-existing TG found."
+        fi
+        # Delete DB subnet group
+        echo "Attempting to delete pre-existing DB subnet group (if any)..."
+        aws rds delete-db-subnet-group --region $AWS_REGION --db-subnet-group-name asset-tagging-db-subnet-group || true
+        echo "Pre-clean complete."
+        
     - name: 📦 Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
@@ -143,53 +180,6 @@ jobs:
         TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
       run: terraform init
       
-    - name: 🔎 Discover existing ARNs (if any)
-      working-directory: ./infrastructure/terraform
-      run: |
-        echo "ALB_ARN=$(aws elbv2 describe-load-balancers --region $AWS_REGION --names asset-tagging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)" >> $GITHUB_ENV
-        echo "TG_ARN=$(aws elbv2 describe-target-groups --region $AWS_REGION --names asset-tagging-tg --query 'TargetGroups[0].TargetGroupArn' --output text)" >> $GITHUB_ENV
-      continue-on-error: true
-
-    - name: 🧭 Import pre-existing resources (one-time)
-      working-directory: ./infrastructure/terraform
-      env:
-        TF_IN_AUTOMATION: 'true'
-        TF_INPUT: 'false'
-        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
-      run: |
-        terraform import aws_db_subnet_group.main asset-tagging-db-subnet-group || true
-        if [ -n "${{ env.ALB_ARN }}" ] && [ "${{ env.ALB_ARN }}" != "None" ]; then terraform import aws_lb.main "${{ env.ALB_ARN }}" || true; fi
-        if [ -n "${{ env.TG_ARN }}" ] && [ "${{ env.TG_ARN }}" != "None" ]; then terraform import aws_lb_target_group.main "${{ env.TG_ARN }}" || true; fi
-
-    - name: ⏬ Speed up TG replacement (optional)
-      if: env.TG_ARN && env.TG_ARN != 'None'
-      run: |
-        echo "Modifying TG deregistration delay to 30s for $TG_ARN (if exists)"
-        aws elbv2 modify-target-group-attributes \
-          --target-group-arn "$TG_ARN" \
-          --attributes Key=deregistration_delay.timeout_seconds,Value=30 || true
-        echo "Deregistering any registered targets to avoid long drain..."
-        TARGET_IDS=$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" --query 'TargetHealthDescriptions[].Target.Id' --output text 2>/dev/null || true)
-        for id in $TARGET_IDS; do
-          echo "Deregistering target $id"
-          aws elbv2 deregister-targets --target-group-arn "$TG_ARN" --targets Id=$id || true
-        done
-        echo "Waiting 30s for cleanup"
-        sleep 30
-
-    - name: 🧹 Detach ALB listeners to unblock TG deletion (one-time)
-      if: env.ALB_ARN && env.ALB_ARN != 'None'
-      run: |
-        echo "Fetching listeners for ALB $ALB_ARN"
-        LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[].ListenerArn' --output text 2>/dev/null || true)
-        for L in $LISTENERS; do
-          echo "Deleting listener $L"
-          aws elbv2 delete-listener --listener-arn "$L" || true
-        done
-        echo "Listeners deleted (if any)."
-        sleep 5
-        
     - name: 📋 Terraform Plan
       working-directory: ./infrastructure/terraform
       env:
