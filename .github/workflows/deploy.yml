@@ -124,20 +124,6 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
-    - name: 🔎 Discover existing ARNs (if any)
-      working-directory: ./infrastructure/terraform
-      run: |
-        echo "ALB_ARN=$(aws elbv2 describe-load-balancers --region $AWS_REGION --names asset-tagging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)" >> $GITHUB_ENV
-        echo "TG_ARN=$(aws elbv2 describe-target-groups --region $AWS_REGION --names asset-tagging-tg --query 'TargetGroups[0].TargetGroupArn' --output text)" >> $GITHUB_ENV
-      continue-on-error: true
-
-    - name: 🧭 Import pre-existing resources (one-time)
-      working-directory: ./infrastructure/terraform
-      run: |
-        terraform import aws_db_subnet_group.main asset-tagging-db-subnet-group || true
-        if [ -n "${{ env.ALB_ARN }}" ] && [ "${{ env.ALB_ARN }}" != "None" ]; then terraform import aws_lb.main "${{ env.ALB_ARN }}" || true; fi
-        if [ -n "${{ env.TG_ARN }}" ] && [ "${{ env.TG_ARN }}" != "None" ]; then terraform import aws_lb_target_group.main "${{ env.TG_ARN }}" || true; fi
-        
     - name: 📦 Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
@@ -157,6 +143,20 @@ jobs:
         TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
       run: terraform init
       
+    - name: 🔎 Discover existing ARNs (if any)
+      working-directory: ./infrastructure/terraform
+      run: |
+        echo "ALB_ARN=$(aws elbv2 describe-load-balancers --region $AWS_REGION --names asset-tagging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)" >> $GITHUB_ENV
+        echo "TG_ARN=$(aws elbv2 describe-target-groups --region $AWS_REGION --names asset-tagging-tg --query 'TargetGroups[0].TargetGroupArn' --output text)" >> $GITHUB_ENV
+      continue-on-error: true
+
+    - name: 🧭 Import pre-existing resources (one-time)
+      working-directory: ./infrastructure/terraform
+      run: |
+        terraform import aws_db_subnet_group.main asset-tagging-db-subnet-group || true
+        if [ -n "${{ env.ALB_ARN }}" ] && [ "${{ env.ALB_ARN }}" != "None" ]; then terraform import aws_lb.main "${{ env.ALB_ARN }}" || true; fi
+        if [ -n "${{ env.TG_ARN }}" ] && [ "${{ env.TG_ARN }}" != "None" ]; then terraform import aws_lb_target_group.main "${{ env.TG_ARN }}" || true; fi
+        
     - name: 📋 Terraform Plan
       working-directory: ./infrastructure/terraform
       env:
