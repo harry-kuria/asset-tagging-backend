@@ -296,15 +296,19 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        cat > deploy-to-server.sh << 'EOF'
+        cat > deploy-to-server.sh << EOF
         #!/bin/bash
         set -e
         
         echo "🚀 Starting deployment..."
         
-        # Update infrastructure repository
+        # Update infrastructure repository (skip if git auth fails)
         cd ~/moowi-IAC
-        git pull origin main || true
+        if git remote -v | grep -q "https://github.com"; then
+          echo "⚠️  Infrastructure repo uses HTTPS, skipping git pull (auth required)"
+        else
+          git pull origin main || echo "⚠️  Git pull failed, continuing with deployment"
+        fi
         
         # Stop current services
         cd /opt/asset-tagging
@@ -316,11 +320,16 @@ jobs:
         sudo docker image prune -af || true
         sudo docker system df || true
         
-        # Pull latest image
-        sudo docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+        # Pull latest image with proper ECR registry
+        ECR_REGISTRY="${ECR_REGISTRY}"
+        ECR_REPOSITORY="asset-tagging-backend"
+        FULL_IMAGE="\${ECR_REGISTRY}/\${ECR_REPOSITORY}:latest"
+        
+        echo "📦 Pulling image: \${FULL_IMAGE}"
+        sudo docker pull "\${FULL_IMAGE}"
         
         # Update docker-compose.yml with new image
-        sudo sed -i "s|image: .*asset-tagging-backend.*|image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest|g" docker-compose.yml
+        sudo sed -i "s|image: .*asset-tagging-backend.*|image: \${FULL_IMAGE}|g" docker-compose.yml
         
         # Start services
         sudo docker-compose up -d
@@ -331,7 +340,7 @@ jobs:
             echo "✅ Application deployed successfully!"
             exit 0
           fi
-          echo "Attempt $i/10: service not ready yet, waiting 10s..."
+          echo "Attempt \$i/10: service not ready yet, waiting 10s..."
           sleep 10
         done
         echo "❌ Application health check failed after retries!"
