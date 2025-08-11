@@ -383,19 +383,19 @@ jobs:
         sudo docker pull quay.io/prometheus/prometheus:latest || true
         sudo docker pull public.ecr.aws/docker/library/nginx:alpine || true
         
-        # Create an override compose file using printf to avoid heredoc issues
-        sudo bash -c 'printf "%s\n" \
-          "version: \"3.8\"" \
-          "services:" \
-          "  app:" \
-          "    image: ${FULL_IMAGE}" \
-          "  grafana:" \
-          "    image: ${GRAFANA_IMAGE}" \
-          "  prometheus:" \
-          "    image: quay.io/prometheus/prometheus:latest" \
-          "  nginx:" \
-          "    image: public.ecr.aws/docker/library/nginx:alpine" \
-          > docker-compose.override.yml'
+        # Create override in /tmp with variable expansion, then move into place
+        cat > /tmp/docker-compose.override.yml <<EOF
+        services:
+          app:
+            image: ${FULL_IMAGE}
+          grafana:
+            image: ${GRAFANA_IMAGE}
+          prometheus:
+            image: quay.io/prometheus/prometheus:latest
+          nginx:
+            image: public.ecr.aws/docker/library/nginx:alpine
+        EOF
+        sudo mv /tmp/docker-compose.override.yml ./docker-compose.override.yml
         
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
