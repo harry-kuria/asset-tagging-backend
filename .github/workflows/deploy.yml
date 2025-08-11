@@ -456,6 +456,20 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
+    - name: 🔎 Discover RDS endpoint (fallback)
+      run: |
+        if [ -z "${{ env.RDS_ENDPOINT }}" ] || [ "${{ env.RDS_ENDPOINT }}" = "None" ]; then
+          EP=$(aws rds describe-db-instances --region $AWS_REGION --db-instance-identifier asset-tagging-db --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || echo "")
+          if [ -n "$EP" ] && [ "$EP" != "None" ]; then
+            echo "RDS_ENDPOINT=$EP" >> $GITHUB_ENV
+            echo "Discovered RDS endpoint: $EP"
+          else
+            echo "RDS endpoint not provided and could not be discovered. Set secrets.RDS_ENDPOINT or provide workflow input."; exit 1
+          fi
+        else
+          echo "RDS_ENDPOINT=${{ env.RDS_ENDPOINT }}" >> $GITHUB_ENV
+        fi
+
     - name: 🔑 Setup SSH
       run: |
         mkdir -p ~/.ssh
@@ -486,9 +500,18 @@ jobs:
         
         echo "🗄️ Running database migration..."
         
+        DB_HOST='${{ env.RDS_ENDPOINT }}'
+        DB_USER='admin'
+        DB_PASS='${{ secrets.DB_PASSWORD }}'
+        SQL_FILE="$HOME/asset_management.sql"
+        
+        if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "None" ]; then
+          echo "❌ RDS endpoint is missing. Aborting."; exit 1
+        fi
+
         # Wait for database to be ready
         for i in {1..10}; do
-          if mysql -h ${{ env.RDS_ENDPOINT }} -u admin -p'${{ secrets.DB_PASSWORD }}' -e "SELECT 1;" > /dev/null 2>&1; then
+          if mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" -e "SELECT 1;" > /dev/null 2>&1; then
             echo "✅ Database connection successful!"
             break
           else
@@ -505,9 +528,9 @@ jobs:
         fi
         
         # Run SQL migration directly against RDS
-        if [ -f "$HOME/asset_management.sql" ]; then
+        if [ -f "$SQL_FILE" ]; then
           echo "📥 Importing SQL into RDS..."
-          mysql -h ${{ env.RDS_ENDPOINT }} -u admin -p'${{ secrets.DB_PASSWORD }}' < "$HOME/asset_management.sql"
+          mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" < "$SQL_FILE"
           echo "✅ Database migration completed!"
         else
           echo "❌ SQL file not found at ~/asset_management.sql"; exit 1
