@@ -369,19 +369,19 @@ jobs:
           DC="docker compose"
         fi
         
-        # Create an override compose file (with sudo) and inline the app image to avoid env interpolation issues
-        sudo tee docker-compose.override.yml > /dev/null << EOV
-        version: '3.8'
-        services:
-          app:
-            image: ${FULL_IMAGE}
-          grafana:
-            image: quay.io/grafana/grafana:latest
-          prometheus:
-            image: quay.io/prometheus/prometheus:latest
-          nginx:
-            image: public.ecr.aws/docker/library/nginx:alpine
-EOV
+        # Create an override compose file using printf to avoid heredoc issues
+        sudo bash -c 'printf "%s\n" \
+          "version: \"3.8\"" \
+          "services:" \
+          "  app:" \
+          "    image: ${FULL_IMAGE}" \
+          "  grafana:" \
+          "    image: quay.io/grafana/grafana:latest" \
+          "  prometheus:" \
+          "    image: quay.io/prometheus/prometheus:latest" \
+          "  nginx:" \
+          "    image: public.ecr.aws/docker/library/nginx:alpine" \
+          > docker-compose.override.yml'
         
         # Pre-pull public images to avoid rate limits
         sudo docker pull quay.io/grafana/grafana:latest || true
