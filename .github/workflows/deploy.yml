@@ -421,15 +421,26 @@ jobs:
         sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml up -d --remove-orphans
         
         echo "⏳ Waiting for services to be ready..."
-        for i in {1..10}; do
+        for i in {1..30}; do
           if curl -fsS http://localhost:5000/health > /dev/null; then
-            echo "✅ Application deployed successfully!"
+            echo "✅ Application deployed successfully! (direct app port)"
             exit 0
           fi
-          echo "Attempt $i/10: service not ready yet, waiting 10s..."
+          if curl -fsS http://localhost/health > /dev/null; then
+            echo "✅ Application deployed successfully! (via nginx)"
+            exit 0
+          fi
+          echo "Attempt $i/30: service not ready yet, waiting 10s..."
           sleep 10
         done
-        echo "❌ Application health check failed after retries!"
+        echo "❌ Application health check failed after retries! Dumping diagnostics..."
+        sudo ${DC} ps || true
+        sudo docker ps || true
+        APP_CID=$(sudo docker ps --filter name=asset-tagging-app --format '{{.ID}}' | head -n1)
+        if [ -n "$APP_CID" ]; then
+          echo "--- Last 200 lines of app logs ---"
+          sudo docker logs --tail 200 "$APP_CID" || true
+        fi
         exit 1
         EOF
         
