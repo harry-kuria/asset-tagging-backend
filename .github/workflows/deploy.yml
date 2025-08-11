@@ -532,24 +532,40 @@ jobs:
         
         echo "🗄️ Running database migration..."
         
-        DB_HOST='${{ env.RDS_ENDPOINT }}'
-        DB_USER='${{ env.DB_USER }}'
-        DB_PASS='${{ env.DB_PASSWORD }}'
-        DB_NAME='${{ env.DB_NAME }}'
+        # Load env from app if present
+        if [ -f /opt/asset-tagging/.env ]; then
+          set -a
+          . /opt/asset-tagging/.env
+          set +a
+        fi
+ 
+        # Prefer existing env on EC2; fallback to workflow-provided values
+        DB_HOST="${DB_HOST:-${{ env.RDS_ENDPOINT }}}"
+        DB_USER="${DB_USER:-${{ env.DB_USER }}}"
+        DB_PASS="${DB_PASSWORD:-${{ env.DB_PASSWORD }}}"
+        DB_NAME="${DB_NAME:-${{ env.DB_NAME }}}"
+        DB_PORT="${DB_PORT:-3306}"
+
+        # Compatibility mappings from common var names
+        if [ -z "$DB_HOST" ]; then DB_HOST="${DATABASE_HOST:-${MYSQL_HOST:-}}"; fi
+        if [ -z "$DB_USER" ]; then DB_USER="${DATABASE_USER:-${MYSQL_USER:-}}"; fi
+        if [ -z "$DB_PASS" ]; then DB_PASS="${DATABASE_PASSWORD:-${MYSQL_PASSWORD:-}}"; fi
+        if [ -z "$DB_NAME" ]; then DB_NAME="${DATABASE_NAME:-${MYSQL_DATABASE:-}}"; fi
+        if [ -z "$DB_PORT" ] || ! echo "$DB_PORT" | grep -Eq '^[0-9]+$'; then DB_PORT=3306; fi
         SQL_FILE="$HOME/migration.sql"
         
         if [ -z "$DB_NAME" ]; then
           echo "❌ DB_NAME is not set. Provide workflow input db_name or set secrets.DB_NAME."; exit 1
         fi
-
+ 
         if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "None" ]; then
           echo "❌ RDS endpoint is missing. Aborting."; exit 1
         fi
-        echo "🔎 Connecting to DB host=$DB_HOST db=$DB_NAME user=$DB_USER"
+        echo "🔎 Connecting to DB host=$DB_HOST port=$DB_PORT db=$DB_NAME user=$DB_USER"
         
         # Wait for database to be ready
         for i in {1..10}; do
-          if mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" -e "SELECT 1;" > /dev/null 2>&1; then
+          if mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" -e "SELECT 1;" > /dev/null 2>&1; then
             echo "✅ Database connection successful!"
             break
           else
@@ -568,7 +584,7 @@ jobs:
         # Run SQL migration directly against RDS
         if [ -f "$SQL_FILE" ]; then
           echo "📥 Importing SQL into RDS..."
-          mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" < "$SQL_FILE"
+          mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" < "$SQL_FILE"
           echo "✅ Database migration completed!"
         else
           echo "❌ SQL file not found at ~/migration.sql"; exit 1
