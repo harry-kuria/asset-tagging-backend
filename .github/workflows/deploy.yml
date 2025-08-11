@@ -351,8 +351,8 @@ jobs:
         echo "\ud83d\udce6 Pulling image: \${FULL_IMAGE}"
         sudo docker pull "\${FULL_IMAGE}"
         
-        # Create an override compose file to avoid Docker Hub rate limits without modifying base file
-        cat > docker-compose.override.yml << 'OVR'
+        # Create an override compose file (with sudo) and inline the app image to avoid env interpolation issues
+        sudo tee docker-compose.override.yml > /dev/null << EOF
         version: '3.8'
         services:
           app:
@@ -363,7 +363,7 @@ jobs:
             image: quay.io/prometheus/prometheus:latest
           nginx:
             image: public.ecr.aws/docker/library/nginx:alpine
-        OVR
+        EOF
         
         # Pre-pull public images to avoid rate limits
         sudo docker pull quay.io/grafana/grafana:latest || true
