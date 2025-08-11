@@ -348,32 +348,31 @@ jobs:
         ECR_REPOSITORY="asset-tagging-backend"
         FULL_IMAGE="\${ECR_REGISTRY}/\${ECR_REPOSITORY}:latest"
         
-        echo "📦 Pulling image: \${FULL_IMAGE}"
+        echo "\ud83d\udce6 Pulling image: \${FULL_IMAGE}"
         sudo docker pull "\${FULL_IMAGE}"
         
-        # Update docker-compose.yml with new image
-        sudo sed -i "s|image: .*asset-tagging-backend.*|image: \${FULL_IMAGE}|g" docker-compose.yml
-        
-        # Rewrite third-party images to public registries to avoid Docker Hub rate limits
-        # Grafana -> GHCR
-        sudo sed -i "s|grafana/grafana:latest|ghcr.io/grafana/grafana:latest|g" docker-compose.yml
-        sudo sed -i "s|grafana/grafana|ghcr.io/grafana/grafana:latest|g" docker-compose.yml
-        # Prometheus -> GHCR
-        sudo sed -i "s|prom/prometheus:latest|ghcr.io/prometheus/prometheus:latest|g" docker-compose.yml
-        sudo sed -i "s|prom/prometheus|ghcr.io/prometheus/prometheus:latest|g" docker-compose.yml
-        # Nginx -> AWS ECR Public Docker Official mirror
-        sudo sed -i "s|nginx:alpine|public.ecr.aws/docker/library/nginx:alpine|g" docker-compose.yml
-        sudo sed -i "s|nginx:latest|public.ecr.aws/docker/library/nginx:latest|g" docker-compose.yml
-        sudo sed -i "s|image: nginx$|image: public.ecr.aws/docker/library/nginx:latest|g" docker-compose.yml
+        # Create an override compose file to avoid Docker Hub rate limits without modifying base file
+        cat > docker-compose.override.yml << 'OVR'
+        version: '3.8'
+        services:
+          app:
+            image: ${FULL_IMAGE}
+          grafana:
+            image: quay.io/grafana/grafana:latest
+          prometheus:
+            image: quay.io/prometheus/prometheus:latest
+          nginx:
+            image: public.ecr.aws/docker/library/nginx:alpine
+        OVR
         
         # Pre-pull public images to avoid rate limits
-        sudo docker pull ghcr.io/grafana/grafana:latest || true
-        sudo docker pull ghcr.io/prometheus/prometheus:latest || true
+        sudo docker pull quay.io/grafana/grafana:latest || true
+        sudo docker pull quay.io/prometheus/prometheus:latest || true
         sudo docker pull public.ecr.aws/docker/library/nginx:alpine || true
-        
+         
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
-        sudo docker-compose up -d
+        sudo docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
         
         echo "⏳ Waiting for services to be ready..."
         for i in {1..10}; do
