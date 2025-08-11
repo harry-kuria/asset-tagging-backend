@@ -667,8 +667,12 @@ jobs:
         # Test Prometheus
         ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:9090" || echo "⚠️ Prometheus not responding"
         
-        # Test load balancer
-        curl -f http://${{ env.LOAD_BALANCER_DNS }}/health || echo "⚠️ Load balancer not responding"
+        # Test load balancer (only if DNS provided)
+        if [ -n "${{ env.LOAD_BALANCER_DNS }}" ]; then
+          curl -f "http://${{ env.LOAD_BALANCER_DNS }}/health" || echo "⚠️ Load balancer not responding"
+        else
+          echo "ℹ️ Skipping load balancer check: LOAD_BALANCER_DNS not set"
+        fi
         
     - name: 📊 Check container status
       run: |
