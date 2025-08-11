@@ -351,6 +351,24 @@ jobs:
         echo "\ud83d\udce6 Pulling image: \${FULL_IMAGE}"
         sudo docker pull "\${FULL_IMAGE}"
         
+        # Ensure Docker Compose is available (prefer v2 plugin)
+        if docker compose version >/dev/null 2>&1; then
+          DC="docker compose"
+        elif command -v docker-compose >/dev/null 2>&1; then
+          DC="docker-compose"
+        else
+          echo "📦 Installing Docker Compose v2..."
+          sudo mkdir -p /usr/local/lib/docker/cli-plugins
+          ARCH=$(uname -m)
+          COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64"
+          if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-aarch64"
+          fi
+          sudo curl -sSL "$COMPOSE_URL" -o /usr/local/lib/docker/cli-plugins/docker-compose
+          sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          DC="docker compose"
+        fi
+        
         # Create an override compose file (with sudo) and inline the app image to avoid env interpolation issues
         sudo tee docker-compose.override.yml > /dev/null << EOF
         version: '3.8'
@@ -369,10 +387,10 @@ jobs:
         sudo docker pull quay.io/grafana/grafana:latest || true
         sudo docker pull quay.io/prometheus/prometheus:latest || true
         sudo docker pull public.ecr.aws/docker/library/nginx:alpine || true
-         
+        
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
-        sudo docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
+        sudo \${DC} -f docker-compose.yml -f docker-compose.override.yml up -d
         
         echo "⏳ Waiting for services to be ready..."
         for i in {1..10}; do
