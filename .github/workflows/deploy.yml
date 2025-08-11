@@ -503,16 +503,16 @@ jobs:
         : "${SSH_USER:=ubuntu}"
         SQL_SRC="${{ inputs.sql_path }}"
         if [ -z "$SQL_SRC" ]; then
+          SQL_SRC="backend/migrations/migration.sql"
+        fi
+        if [ ! -s "$SQL_SRC" ]; then
           SQL_SRC="asset.sql"
         fi
         if [ ! -s "$SQL_SRC" ]; then
-          SQL_SRC="asset_management.sql"
+          SQL_SRC="backend/asset_management.sql"
         fi
         if [ ! -s "$SQL_SRC" ]; then
-          SQL_SRC="backend/migrations/add_company_id_all_tables.sql"
-        fi
-        if [ ! -s "$SQL_SRC" ]; then
-          echo "❌ No SQL migration file found. Provide one via inputs.sql_path or include asset.sql / backend/asset_management.sql / backend/migrations/add_company_id_all_tables.sql."; exit 1
+          echo "❌ No SQL migration file found. Provide one via inputs.sql_path or include backend/migrations/migration.sql or asset.sql / backend/asset_management.sql."; exit 1
         fi
         echo "Using SQL file: $SQL_SRC"
         scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa "$SQL_SRC" ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
