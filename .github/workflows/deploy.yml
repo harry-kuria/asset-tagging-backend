@@ -335,6 +335,14 @@ jobs:
         echo "🔐 Logging into ECR..."
         aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY}
         
+        # Login to Docker Hub to avoid rate limits (if credentials available)
+        if [ -n "\${DOCKERHUB_USERNAME:-}" ] && [ -n "\${DOCKERHUB_PASSWORD:-}" ]; then
+          echo "🔐 Logging into Docker Hub..."
+          echo "\${DOCKERHUB_PASSWORD}" | sudo docker login --username "\${DOCKERHUB_USERNAME}" --password-stdin
+        else
+          echo "⚠️  No Docker Hub credentials provided, may hit rate limits"
+        fi
+        
         # Pull latest image with proper ECR registry
         ECR_REGISTRY="${ECR_REGISTRY}"
         ECR_REPOSITORY="asset-tagging-backend"
@@ -346,7 +354,8 @@ jobs:
         # Update docker-compose.yml with new image
         sudo sed -i "s|image: .*asset-tagging-backend.*|image: \${FULL_IMAGE}|g" docker-compose.yml
         
-        # Start services
+        # Start services (this will pull other images as needed)
+        echo "🚀 Starting services..."
         sudo docker-compose up -d
         
         echo "⏳ Waiting for services to be ready..."
@@ -367,8 +376,8 @@ jobs:
         chmod +x deploy-to-server.sh
         : "${SSH_USER:=ubuntu}"
         scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-to-server.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
-        # Pass AWS credentials to EC2 for ECR authentication
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "export AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' && export AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' && export AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' && bash deploy-to-server.sh"
+        # Pass AWS credentials and Docker Hub credentials to EC2 for authentication
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "export AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' && export AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' && export AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' && export DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME || '' }}' && export DOCKERHUB_PASSWORD='${{ secrets.DOCKERHUB_PASSWORD || '' }}' && bash deploy-to-server.sh"
 
   # Run database migrations
   database-migration:
