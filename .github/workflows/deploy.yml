@@ -296,7 +296,7 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        cat > deploy-to-server.sh << EOF
+        cat > deploy-to-server.sh << 'EOF'
         #!/bin/bash
         set -e
         
@@ -336,9 +336,9 @@ jobs:
         aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY}
         
         # Login to Docker Hub to avoid rate limits (if credentials available)
-        if [ -n "\${DOCKERHUB_USERNAME:-}" ] && [ -n "\${DOCKERHUB_PASSWORD:-}" ]; then
+        if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_PASSWORD:-}" ]; then
           echo "🔐 Logging into Docker Hub..."
-          echo "\${DOCKERHUB_PASSWORD}" | sudo docker login --username "\${DOCKERHUB_USERNAME}" --password-stdin
+          echo "${DOCKERHUB_PASSWORD}" | sudo docker login --username "${DOCKERHUB_USERNAME}" --password-stdin
         else
           echo "⚠️  No Docker Hub credentials provided, may hit rate limits"
         fi
@@ -346,10 +346,10 @@ jobs:
         # Pull latest image with proper ECR registry
         ECR_REGISTRY="${ECR_REGISTRY}"
         ECR_REPOSITORY="asset-tagging-backend"
-        FULL_IMAGE="\${ECR_REGISTRY}/\${ECR_REPOSITORY}:latest"
+        FULL_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
         
-        echo "\ud83d\udce6 Pulling image: \${FULL_IMAGE}"
-        sudo docker pull "\${FULL_IMAGE}"
+        echo "📦 Pulling image: ${FULL_IMAGE}"
+        sudo docker pull "${FULL_IMAGE}"
         
         # Ensure Docker Compose is available (prefer v2 plugin)
         if docker compose version >/dev/null 2>&1; then
@@ -370,7 +370,7 @@ jobs:
         fi
         
         # Create an override compose file (with sudo) and inline the app image to avoid env interpolation issues
-        sudo tee docker-compose.override.yml > /dev/null << EOF
+        sudo tee docker-compose.override.yml > /dev/null << EOV
         version: '3.8'
         services:
           app:
@@ -381,7 +381,7 @@ jobs:
             image: quay.io/prometheus/prometheus:latest
           nginx:
             image: public.ecr.aws/docker/library/nginx:alpine
-        EOF
+EOV
         
         # Pre-pull public images to avoid rate limits
         sudo docker pull quay.io/grafana/grafana:latest || true
@@ -390,7 +390,7 @@ jobs:
         
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
-        sudo \${DC} -f docker-compose.yml -f docker-compose.override.yml up -d
+        sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml up -d
         
         echo "⏳ Waiting for services to be ready..."
         for i in {1..10}; do
@@ -398,7 +398,7 @@ jobs:
             echo "✅ Application deployed successfully!"
             exit 0
           fi
-          echo "Attempt \$i/10: service not ready yet, waiting 10s..."
+          echo "Attempt $i/10: service not ready yet, waiting 10s..."
           sleep 10
         done
         echo "❌ Application health check failed after retries!"
@@ -411,7 +411,7 @@ jobs:
         : "${SSH_USER:=ubuntu}"
         scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-to-server.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
         # Pass AWS credentials and Docker Hub credentials to EC2 for authentication
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "export AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' && export AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' && export AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' && export DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME || '' }}' && export DOCKERHUB_PASSWORD='${{ secrets.DOCKERHUB_PASSWORD || '' }}' && bash deploy-to-server.sh"
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "export AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME || '' }}' DOCKERHUB_PASSWORD='${{ secrets.DOCKERHUB_PASSWORD || '' }}' ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}'; bash deploy-to-server.sh"
 
   # Run database migrations
   database-migration:
