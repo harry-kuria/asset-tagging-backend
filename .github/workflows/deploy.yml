@@ -532,11 +532,25 @@ jobs:
         
         echo "🗄️ Running database migration..."
         
-        # Load env from app if present
-        if [ -f /opt/asset-tagging/.env ]; then
-          set -a
-          . /opt/asset-tagging/.env
-          set +a
+        # Load env from app if present (use sudo if not readable)
+        if sudo test -f /opt/asset-tagging/.env; then
+          if [ -r /opt/asset-tagging/.env ]; then
+            set -a
+            . /opt/asset-tagging/.env
+            set +a
+          else
+            # Read via sudo and export lines of the form KEY=VALUE, ignore comments/blanks
+            while IFS= read -r line; do
+              case "$line" in
+                ""|\#*) continue ;;
+                *=*)
+                  key="${line%%=*}"
+                  val="${line#*=}"
+                  export "$key=$val"
+                ;;
+              esac
+            done < <(sudo cat /opt/asset-tagging/.env)
+          fi
         fi
  
         # Prefer existing env on EC2; fallback to workflow-provided values
@@ -545,7 +559,7 @@ jobs:
         DB_PASS="${DB_PASSWORD:-${{ env.DB_PASSWORD }}}"
         DB_NAME="${DB_NAME:-${{ env.DB_NAME }}}"
         DB_PORT="${DB_PORT:-3306}"
-
+ 
         # Compatibility mappings from common var names
         if [ -z "$DB_HOST" ]; then DB_HOST="${DATABASE_HOST:-${MYSQL_HOST:-}}"; fi
         if [ -z "$DB_USER" ]; then DB_USER="${DATABASE_USER:-${MYSQL_USER:-}}"; fi
