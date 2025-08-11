@@ -398,7 +398,12 @@ jobs:
         
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
-        sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml up -d
+        echo "🛑 Ensuring host port 80 is free..."
+        sudo systemctl stop nginx 2>/dev/null || true
+        sudo systemctl disable nginx 2>/dev/null || true
+        sudo pkill -f nginx 2>/dev/null || true
+        sudo fuser -k 80/tcp 2>/dev/null || true
+        sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml up -d --remove-orphans
         
         echo "⏳ Waiting for services to be ready..."
         for i in {1..10}; do
