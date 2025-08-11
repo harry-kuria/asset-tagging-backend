@@ -669,8 +669,27 @@ jobs:
     - name: 🏥 Run health checks
       run: |
         : "${SSH_USER:=ubuntu}"
-        # Test application health
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:5000/health" || exit 1
+        # Test application health with retries and nginx fallback
+        for i in {1..30}; do
+          if ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost:5000/health > /dev/null"; then
+            echo "✅ App healthy on :5000"
+            break
+          fi
+          if ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost/health > /dev/null"; then
+            echo "✅ App healthy via nginx"
+            break
+          fi
+          echo "Attempt $i/30: app not ready, waiting 10s..."
+          sleep 10
+        done
+        
+        # After retries, verify one more time or dump diagnostics
+        if ! ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost:5000/health > /dev/null" && \
+           ! ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost/health > /dev/null"; then
+          echo "❌ App health check failed after retries. Dumping diagnostics..."
+          ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "sudo docker ps && sudo docker compose -f /opt/asset-tagging/docker-compose.yml ps && sudo docker logs --tail 200 \$(sudo docker ps --filter name=asset-tagging-app --format '{{.ID}}' | head -n1) || true"
+          exit 1
+        fi
         
         # Test Grafana
         ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:3000" || echo "⚠️ Grafana not responding"
