@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: ''
+      sql_path:
+        description: 'Path to SQL file to run (e.g., backend/migrations/add_company_id_all_tables.sql)'
+        required: false
+        type: string
+        default: ''
       load_balancer_dns:
         description: 'ALB DNS for health checks (overrides secret if provided)'
         required: false
@@ -496,12 +501,18 @@ jobs:
     - name: 📤 Upload SQL to EC2
       run: |
         : "${SSH_USER:=ubuntu}"
-        SQL_SRC="asset.sql"
+        SQL_SRC="${{ inputs.sql_path }}"
+        if [ -z "$SQL_SRC" ]; then
+          SQL_SRC="asset.sql"
+        fi
         if [ ! -s "$SQL_SRC" ]; then
           SQL_SRC="asset_management.sql"
         fi
         if [ ! -s "$SQL_SRC" ]; then
-          echo "❌ No SQL migration file found. Provide asset.sql or asset_management.sql in the repository root."; exit 1
+          SQL_SRC="backend/migrations/add_company_id_all_tables.sql"
+        fi
+        if [ ! -s "$SQL_SRC" ]; then
+          echo "❌ No SQL migration file found. Provide one via inputs.sql_path or include asset.sql / backend/asset_management.sql / backend/migrations/add_company_id_all_tables.sql."; exit 1
         fi
         echo "Using SQL file: $SQL_SRC"
         scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa "$SQL_SRC" ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
