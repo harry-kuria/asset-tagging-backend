@@ -22,6 +22,11 @@ on:
         required: false
         type: string
         default: ''
+      db_name:
+        description: 'Database name to run migrations against (overrides secret if provided)'
+        required: false
+        type: string
+        default: ''
       load_balancer_dns:
         description: 'ALB DNS for health checks (overrides secret if provided)'
         required: false
@@ -313,7 +318,7 @@ jobs:
         # Stop current services
         cd /opt/asset-tagging
         sudo docker-compose down || true
-
+        
         echo "🧹 Pruning unused Docker images and containers to free space..."
         sudo docker system df || true
         sudo docker container prune -f || true
@@ -435,6 +440,7 @@ jobs:
     env:
       EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
       RDS_ENDPOINT: ${{ inputs.rds_endpoint != '' && inputs.rds_endpoint || secrets.RDS_ENDPOINT }}
+      DB_NAME: ${{ inputs.db_name != '' && inputs.db_name || secrets.DB_NAME }}
       SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || secrets.EC2_SSH_USER }}
     
     steps:
@@ -469,7 +475,7 @@ jobs:
         else
           echo "RDS_ENDPOINT=${{ env.RDS_ENDPOINT }}" >> $GITHUB_ENV
         fi
-
+        
     - name: 🔑 Setup SSH
       run: |
         mkdir -p ~/.ssh
@@ -490,7 +496,15 @@ jobs:
     - name: 📤 Upload SQL to EC2
       run: |
         : "${SSH_USER:=ubuntu}"
-        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa asset_management.sql ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/asset_management.sql
+        SQL_SRC="asset.sql"
+        if [ ! -s "$SQL_SRC" ]; then
+          SQL_SRC="asset_management.sql"
+        fi
+        if [ ! -s "$SQL_SRC" ]; then
+          echo "❌ No SQL migration file found. Provide asset.sql or asset_management.sql in the repository root."; exit 1
+        fi
+        echo "Using SQL file: $SQL_SRC"
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa "$SQL_SRC" ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
         
     - name: 📋 Create migration script
       run: |
@@ -503,15 +517,20 @@ jobs:
         DB_HOST='${{ env.RDS_ENDPOINT }}'
         DB_USER='admin'
         DB_PASS='${{ secrets.DB_PASSWORD }}'
-        SQL_FILE="$HOME/asset_management.sql"
+        DB_NAME='${{ env.DB_NAME }}'
+        SQL_FILE="$HOME/migration.sql"
         
+        if [ -z "$DB_NAME" ]; then
+          echo "❌ DB_NAME is not set. Provide workflow input db_name or set secrets.DB_NAME."; exit 1
+        fi
+
         if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "None" ]; then
           echo "❌ RDS endpoint is missing. Aborting."; exit 1
         fi
-
+        
         # Wait for database to be ready
         for i in {1..10}; do
-          if mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" -e "SELECT 1;" > /dev/null 2>&1; then
+          if mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" -e "SELECT 1;" > /dev/null 2>&1; then
             echo "✅ Database connection successful!"
             break
           else
@@ -530,8 +549,8 @@ jobs:
         # Run SQL migration directly against RDS
         if [ -f "$SQL_FILE" ]; then
           echo "📥 Importing SQL into RDS..."
-          mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" < "$SQL_FILE"
-          echo "✅ Database migration completed!"
+          mysql --host="$DB_HOST" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" < "$SQL_FILE"
+        echo "✅ Database migration completed!"
         else
           echo "❌ SQL file not found at ~/asset_management.sql"; exit 1
         fi
