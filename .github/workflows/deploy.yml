@@ -438,6 +438,9 @@ jobs:
       SSH_USER: ${{ inputs.ssh_user != '' && inputs.ssh_user || secrets.EC2_SSH_USER }}
     
     steps:
+    - name: 📥 Checkout backend repo
+      uses: actions/checkout@v4
+
     - name: 📥 Checkout infrastructure repo
       uses: actions/checkout@v4
       with:
@@ -455,19 +458,13 @@ jobs:
         
     - name: 🔑 Setup SSH
       run: |
-        set -e
         mkdir -p ~/.ssh
         if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY secret is required and not set."; exit 1; fi
-        # Write key, handling both literal newlines and \n-escaped forms and CRLF
-        rm -f ~/.ssh/id_rsa
         printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa || true
-        # If it still doesn't look like a key, try base64 decoding
         if ! grep -q "BEGIN .*PRIVATE KEY" ~/.ssh/id_rsa; then
-          echo "Key does not appear to be raw PEM/OpenSSH. Trying base64 decode..."
           printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa 2>/dev/null || true
         fi
         chmod 600 ~/.ssh/id_rsa
-        # Validate that the key can be loaded and is not passphrase-protected
         if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
           echo "Invalid SSH private key in secrets (format or passphrase). Ensure it is an unencrypted PEM/OpenSSH key with correct newlines.";
           exit 1
@@ -475,6 +472,11 @@ jobs:
         : "${SSH_USER:=ubuntu}"
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
         ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
+        
+    - name: 📤 Upload SQL to EC2
+      run: |
+        : "${SSH_USER:=ubuntu}"
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa asset_management.sql ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/asset_management.sql
         
     - name: 📋 Create migration script
       run: |
@@ -495,11 +497,22 @@ jobs:
           fi
         done
         
-        # Run migration script
-        cd ~/moowi-IAC/deployment
-        sudo bash setup-ec2.sh
+        # Ensure mysql client is installed (non-interactive)
+        export DEBIAN_FRONTEND=noninteractive
+        if ! command -v mysql >/dev/null 2>&1; then
+          sudo apt-get update -y
+          sudo apt-get install -y mysql-client
+        fi
         
-        echo "✅ Database migration completed!"
+        # Run SQL migration directly against RDS
+        if [ -f "$HOME/asset_management.sql" ]; then
+          echo "📥 Importing SQL into RDS..."
+          mysql -h ${{ env.RDS_ENDPOINT }} -u admin -p'${{ secrets.DB_PASSWORD }}' < "$HOME/asset_management.sql"
+          echo "✅ Database migration completed!"
+        else
+          echo "❌ SQL file not found at ~/asset_management.sql"; exit 1
+        fi
+        
         EOF
         
     - name: 🗄️ Run migration on EC2
