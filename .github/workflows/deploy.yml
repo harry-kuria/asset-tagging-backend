@@ -338,7 +338,7 @@ jobs:
         # Login to Docker Hub to avoid rate limits (if credentials available)
         if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_PASSWORD:-}" ]; then
           echo "🔐 Logging into Docker Hub..."
-          echo "${DOCKERHUB_PASSWORD}" | sudo docker login --username "${DOCKERHUB_USERNAME}" --password-stdin
+          echo "${DOCKERHUB_PASSWORD}" | sudo docker login --username "${DOCKERHUB_USERNAME}" --password-stdin || true
         else
           echo "⚠️  No Docker Hub credentials provided, may hit rate limits"
         fi
@@ -369,6 +369,20 @@ jobs:
           DC="docker compose"
         fi
         
+        # Resolve Grafana image with fallback (quay -> docker hub)
+        GRAFANA_IMAGE="quay.io/grafana/grafana:latest"
+        echo "📦 Pre-pulling Grafana from ${GRAFANA_IMAGE} (will fallback to Docker Hub if unauthorized)..."
+        if ! sudo docker pull "${GRAFANA_IMAGE}" >/dev/null 2>&1; then
+          echo "⚠️  Unable to pull ${GRAFANA_IMAGE}, falling back to Docker Hub grafana/grafana:latest"
+          GRAFANA_IMAGE="docker.io/grafana/grafana:latest"
+          # Attempt Docker Hub login only if creds are present (already done earlier)
+          sudo docker pull "${GRAFANA_IMAGE}" || true
+        fi
+        
+        # Pre-pull public images to avoid rate limits
+        sudo docker pull quay.io/prometheus/prometheus:latest || true
+        sudo docker pull public.ecr.aws/docker/library/nginx:alpine || true
+        
         # Create an override compose file using printf to avoid heredoc issues
         sudo bash -c 'printf "%s\n" \
           "version: \"3.8\"" \
@@ -376,17 +390,12 @@ jobs:
           "  app:" \
           "    image: ${FULL_IMAGE}" \
           "  grafana:" \
-          "    image: quay.io/grafana/grafana:latest" \
+          "    image: ${GRAFANA_IMAGE}" \
           "  prometheus:" \
           "    image: quay.io/prometheus/prometheus:latest" \
           "  nginx:" \
           "    image: public.ecr.aws/docker/library/nginx:alpine" \
           > docker-compose.override.yml'
-        
-        # Pre-pull public images to avoid rate limits
-        sudo docker pull quay.io/grafana/grafana:latest || true
-        sudo docker pull quay.io/prometheus/prometheus:latest || true
-        sudo docker pull public.ecr.aws/docker/library/nginx:alpine || true
         
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
