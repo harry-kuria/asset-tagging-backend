@@ -623,6 +623,8 @@ jobs:
         fi
         exit 1
         EOF
+        # Normalize heredoc terminators to start at column 0 inside the script
+        sed -i -E 's/^[[:space:]]*(NGINX_HTTP|NGINX_HTTPS|DOCKER_OVR)$/\1/' deploy-to-server.sh
         
     - name: 🚀 Deploy to EC2
       run: |
