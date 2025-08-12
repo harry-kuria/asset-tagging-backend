@@ -414,7 +414,7 @@ jobs:
         PROMETHEUS_SERVER_NAME="${PROMETHEUS_SERVER_NAME:-prom.moowigroup.com}"
         LE_EMAIL="${LE_EMAIL:-}"
         sudo mkdir -p /opt/asset-tagging/nginx/conf.d /opt/asset-tagging/nginx/certbot /opt/asset-tagging/nginx/letsencrypt
-
+ 
         # Initial HTTP-only config to satisfy HTTP-01 challenge and serve apps
         sudo bash -c "printf '%s\n' \
           'server {' \
@@ -434,10 +434,10 @@ jobs:
           '  add_header Access-Control-Allow-Origin "*" always;' \
           '' \
           '  location / {' \
-          '    proxy_set_header Host \$host;' \
-          '    proxy_set_header X-Real-IP \$remote_addr;' \
-          '    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' \
-          '    proxy_set_header X-Forwarded-Proto \$scheme;' \
+          '    proxy_set_header Host \\$host;' \
+          '    proxy_set_header X-Real-IP \\$remote_addr;' \
+          '    proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;' \
+          '    proxy_set_header X-Forwarded-Proto \\$scheme;' \
           '    proxy_pass http://asset-tagging-app:5000;' \
           '  }' \
           '' \
@@ -458,7 +458,7 @@ jobs:
           '  location / { proxy_pass http://prometheus:9090; }' \
           '}' \
           > /opt/asset-tagging/nginx/conf.d/default.conf"
-         
+        
          # Create override atomically with sudo, expanding variables safely
          sudo bash -c "printf '%s\n' \
            'services:' \
@@ -555,10 +555,33 @@ jobs:
           # Install systemd timer to renew certs daily and reload nginx on success
           echo "🗓️  Installing certbot renew systemd timer"
           # Helper script to reload nginx inside the container after renew
-          sudo /bin/bash -c 'cat > /usr/local/bin/reload-nginx-after-renew.sh <<"SH"\n#!/usr/bin/env bash\nset -e\nCID=$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1)\n[ -n "$CID" ] && docker exec "$CID" nginx -s reload || true\nSH'
+          sudo bash -c "printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'set -e' \
+            'CID=$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1)' \
+            '[ -n "\\$CID" ] && docker exec "\\$CID" nginx -s reload || true' \
+            > /usr/local/bin/reload-nginx-after-renew.sh"
           sudo chmod +x /usr/local/bin/reload-nginx-after-renew.sh
-          sudo /bin/bash -c 'cat > /etc/systemd/system/certbot-renew.service <<"UNIT"\n[Unit]\nDescription=Renew Lets Encrypt certificates (dockerized certbot)\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot\nExecStartPost=/usr/local/bin/reload-nginx-after-renew.sh\nUNIT'
-          sudo /bin/bash -c 'cat > /etc/systemd/system/certbot-renew.timer <<"UNIT"\n[Unit]\nDescription=Daily certbot renew timer\n\n[Timer]\nOnCalendar=daily\nPersistent=true\n\n[Install]\nWantedBy=timers.target\nUNIT'
+          sudo bash -c "printf '%s\n' \
+            '[Unit]' \
+            'Description=Renew Lets Encrypt certificates (dockerized certbot)' \
+            '' \
+            '[Service]' \
+            'Type=oneshot' \
+            'ExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot' \
+            'ExecStartPost=/usr/local/bin/reload-nginx-after-renew.sh' \
+            > /etc/systemd/system/certbot-renew.service"
+          sudo bash -c "printf '%s\n' \
+            '[Unit]' \
+            'Description=Daily certbot renew timer' \
+            '' \
+            '[Timer]' \
+            'OnCalendar=daily' \
+            'Persistent=true' \
+            '' \
+            '[Install]' \
+            'WantedBy=timers.target' \
+            > /etc/systemd/system/certbot-renew.timer"
           sudo systemctl daemon-reload || true
           sudo systemctl enable --now certbot-renew.timer || true
         else
