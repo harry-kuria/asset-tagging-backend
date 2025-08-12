@@ -435,17 +435,13 @@ jobs:
 
           location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
 
-          # CORS for API
-          if ($request_method = OPTIONS) {
+          location / {
+            # CORS for API
+            if ($request_method = OPTIONS) { return 204; }
             add_header Access-Control-Allow-Origin "*" always;
             add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
             add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
             add_header Access-Control-Max-Age "86400" always;
-            return 204;
-          }
-          add_header Access-Control-Allow-Origin "*" always;
-
-          location / {
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -472,10 +468,40 @@ jobs:
         NGINX_HTTP
  
         # Create override atomically with sudo, expanding variables safely
-        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE}' | sudo tee docker-compose.override.yml > /dev/null
+        # Before writing override, load DB env from existing .env if present
+        if sudo test -f /opt/asset-tagging/.env; then
+          if [ -r /opt/asset-tagging/.env ]; then
+            set -a; . /opt/asset-tagging/.env; set +a
+          else
+            while IFS= read -r line; do
+              case "$line" in ""|\#*) continue ;; *=*) key="${line%%=*}"; val="${line#*=}"; export "$key=$val" ;; esac
+            done < <(sudo cat /opt/asset-tagging/.env)
+          fi
+        fi
+        : "${DB_HOST:=${RDS_ENDPOINT:-}}"
+        : "${DB_USER:=${DATABASE_USER:-${MYSQL_USER:-admin}}}"
+        : "${DB_PASS:=${DATABASE_PASSWORD:-${MYSQL_PASSWORD:-}}}"
+        : "${DB_NAME:=${DATABASE_NAME:-${MYSQL_DATABASE:-}}}"
+        : "${DB_PORT:=3306}"
+        export DB_HOST DB_USER DB_PASS DB_NAME DB_PORT
+        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE} ${DB_HOST} ${DB_USER} ${DB_PASS} ${DB_NAME} ${DB_PORT}' | sudo tee docker-compose.override.yml > /dev/null
         services:
           app:
             image: ${FULL_IMAGE}
+            environment:
+              - DB_HOST=${DB_HOST}
+              - DB_USER=${DB_USER}
+              - DB_PASSWORD=${DB_PASS}
+              - DB_NAME=${DB_NAME}
+              - DB_PORT=${DB_PORT}
+              - DATABASE_HOST=${DB_HOST}
+              - DATABASE_USER=${DB_USER}
+              - DATABASE_PASSWORD=${DB_PASS}
+              - DATABASE_NAME=${DB_NAME}
+              - MYSQL_HOST=${DB_HOST}
+              - MYSQL_USER=${DB_USER}
+              - MYSQL_PASSWORD=${DB_PASS}
+              - MYSQL_DATABASE=${DB_NAME}
           grafana:
             image: ${GRAFANA_IMAGE}
           prometheus:
@@ -551,16 +577,13 @@ jobs:
               server_name ${API_SERVER_NAME};
               ssl_certificate /etc/letsencrypt/live/${API_SERVER_NAME}/fullchain.pem;
               ssl_certificate_key /etc/letsencrypt/live/${API_SERVER_NAME}/privkey.pem;
-              # CORS for API
-              if ($request_method = OPTIONS) {
+              location / {
+                # CORS for API
+                if ($request_method = OPTIONS) { return 204; }
                 add_header Access-Control-Allow-Origin "*" always;
                 add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
                 add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
                 add_header Access-Control-Max-Age "86400" always;
-                return 204;
-              }
-              add_header Access-Control-Allow-Origin "*" always;
-              location / {
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -651,7 +674,7 @@ jobs:
         : "${SSH_USER:=ubuntu}"
         scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-to-server.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
         # Pass AWS credentials and Docker Hub credentials to EC2 for authentication
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "export AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME || '' }}' DOCKERHUB_PASSWORD='${{ secrets.DOCKERHUB_PASSWORD || '' }}' ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}' API_SERVER_NAME='${{ inputs.api_server_name != '' && inputs.api_server_name || secrets.API_SERVER_NAME || 'api.moowigroup.com' }}' GRAFANA_SERVER_NAME='${{ inputs.grafana_server_name != '' && inputs.grafana_server_name || secrets.GRAFANA_SERVER_NAME || 'graf.moowigroup.com' }}' PROMETHEUS_SERVER_NAME='${{ inputs.prometheus_server_name != '' && inputs.prometheus_server_name || secrets.PROMETHEUS_SERVER_NAME || 'prom.moowigroup.com' }}' LE_EMAIL='${{ inputs.letsencrypt_email || secrets.LETSENCRYPT_EMAIL || '' }}'; bash deploy-to-server.sh"
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "export AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME || '' }}' DOCKERHUB_PASSWORD='${{ secrets.DOCKERHUB_PASSWORD || '' }}' ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}' API_SERVER_NAME='${{ inputs.api_server_name != '' && inputs.api_server_name || secrets.API_SERVER_NAME || 'api.moowigroup.com' }}' GRAFANA_SERVER_NAME='${{ inputs.grafana_server_name != '' && inputs.grafana_server_name || secrets.GRAFANA_SERVER_NAME || 'graf.moowigroup.com' }}' PROMETHEUS_SERVER_NAME='${{ inputs.prometheus_server_name != '' && inputs.prometheus_server_name || secrets.PROMETHEUS_SERVER_NAME || 'prom.moowigroup.com' }}' LE_EMAIL='${{ inputs.letsencrypt_email || secrets.LETSENCRYPT_EMAIL || '' }}' DB_HOST='${{ inputs.rds_endpoint != '' && inputs.rds_endpoint || secrets.RDS_ENDPOINT || '' }}' DB_USER='${{ inputs.db_user != '' && inputs.db_user || secrets.DB_USER || 'admin' }}' DB_PASSWORD='${{ secrets.DB_PASSWORD || '' }}' DB_NAME='${{ inputs.db_name != '' && inputs.db_name || secrets.DB_NAME || '' }}' DB_PORT='3306'; bash deploy-to-server.sh"
 
   # Run database migrations
   database-migration:
