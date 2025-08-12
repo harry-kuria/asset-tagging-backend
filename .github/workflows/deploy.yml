@@ -501,26 +501,15 @@ jobs:
           'JWT_SECRET='"${JWT_SECRET}" \
           > /opt/asset-tagging/.env.app"
  
-        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE}' | sudo tee docker-compose.override.yml > /dev/null
+        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE}' | sudo tee docker-compose.override.yml > /dev/null
         services:
           app:
             image: ${FULL_IMAGE}
             env_file:
               - .env.app
-            grafana:
-              image: ${GRAFANA_IMAGE}
-          prometheus:
-            image: quay.io/prometheus/prometheus:latest
-          nginx:
-            image: public.ecr.aws/docker/library/nginx:alpine
-            volumes:
-              - ./nginx/conf.d:/etc/nginx/conf.d:ro
-              - ./nginx/certbot:/var/www/certbot:ro
-              - ./nginx/letsencrypt:/etc/letsencrypt:ro
-            ports:
-              - "80:80"
-              - "443:443"
         DOCKER_OVR
+        echo "--- docker-compose.override.yml ---"
+        sudo sed -n '1,120p' docker-compose.override.yml || true
  
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
