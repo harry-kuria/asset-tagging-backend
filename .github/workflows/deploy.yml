@@ -554,26 +554,8 @@ jobs:
 
           # Install systemd timer to renew certs daily and reload nginx on success
           echo "🗓️  Installing certbot renew systemd timer"
-          sudo bash -c "printf '%s\n' \
-            '[Unit]' \
-            'Description=Renew Let\'s Encrypt certificates (dockerized certbot)' \
-            '' \
-            '[Service]' \
-            'Type=oneshot' \
-            'ExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot' \
-            'ExecStartPost=/usr/bin/bash -c "CID=\$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1); [ -n \"\$CID\" ] && docker exec \"\$CID\" nginx -s reload || true"' \
-            > /etc/systemd/system/certbot-renew.service"
-          sudo bash -c "printf '%s\n' \
-            '[Unit]' \
-            'Description=Daily certbot renew timer' \
-            '' \
-            '[Timer]' \
-            'OnCalendar=daily' \
-            'Persistent=true' \
-            '' \
-            '[Install]' \
-            'WantedBy=timers.target' \
-            > /etc/systemd/system/certbot-renew.timer"
+          sudo /bin/bash -c 'cat > /etc/systemd/system/certbot-renew.service <<"UNIT"\n[Unit]\nDescription=Renew Let\'s Encrypt certificates (dockerized certbot)\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot\nExecStartPost=/usr/bin/bash -c "CID=$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1); [ -n \"$CID\" ] && docker exec \"$CID\" nginx -s reload || true"\nUNIT'
+          sudo /bin/bash -c 'cat > /etc/systemd/system/certbot-renew.timer <<"UNIT"\n[Unit]\nDescription=Daily certbot renew timer\n\n[Timer]\nOnCalendar=daily\nPersistent=true\n\n[Install]\nWantedBy=timers.target\nUNIT'
           sudo systemctl daemon-reload || true
           sudo systemctl enable --now certbot-renew.timer || true
         else
@@ -770,7 +752,7 @@ jobs:
         if [ -f "$SQL_FILE" ]; then
           echo "📥 Importing SQL into RDS..."
           mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" < "$SQL_FILE"
-          echo "✅ Database migration completed!"
+        echo "✅ Database migration completed!"
         else
           echo "❌ SQL file not found at ~/migration.sql"; exit 1
         fi
