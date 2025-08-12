@@ -5,7 +5,6 @@
 CREATE TABLE IF NOT EXISTS companies (
   id INT AUTO_INCREMENT PRIMARY KEY,
   company_name VARCHAR(255) NOT NULL,
-  company_code VARCHAR(50) UNIQUE NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   phone VARCHAR(50),
   address TEXT,
@@ -53,7 +52,7 @@ CREATE TABLE IF NOT EXISTS asset_categories (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- 2) Helper: add a column if it does not already exist
+-- 2) Helpers: add/drop a column idempotently
 DELIMITER $$
 DROP PROCEDURE IF EXISTS add_col_if_missing $$
 CREATE PROCEDURE add_col_if_missing(
@@ -69,6 +68,23 @@ BEGIN
   WHERE TABLE_SCHEMA = p_schema AND TABLE_NAME = p_table AND COLUMN_NAME = p_column;
   IF col_count = 0 THEN
     SET @ddl = CONCAT('ALTER TABLE `', p_schema, '`.`', p_table, '` ADD COLUMN ', p_definition);
+    PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
+  END IF;
+END $$
+
+DROP PROCEDURE IF EXISTS drop_col_if_exists $$
+CREATE PROCEDURE drop_col_if_exists(
+  IN p_schema VARCHAR(64),
+  IN p_table  VARCHAR(64),
+  IN p_column VARCHAR(64)
+)
+BEGIN
+  DECLARE col_count INT;
+  SELECT COUNT(*) INTO col_count
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = p_schema AND TABLE_NAME = p_table AND COLUMN_NAME = p_column;
+  IF col_count > 0 THEN
+    SET @ddl = CONCAT('ALTER TABLE `', p_schema, '`.`', p_table, '` DROP COLUMN `', p_column, '`');
     PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
   END IF;
 END $$
@@ -96,7 +112,10 @@ CALL add_col_if_missing(DATABASE(), 'asset_categories', 'is_active', 'BOOLEAN DE
 CALL add_col_if_missing(DATABASE(), 'asset_categories', 'created_at', 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP');
 CALL add_col_if_missing(DATABASE(), 'asset_categories', 'updated_at', 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
 
--- 4) Optional legacy support: ensure companyId (camelCase) exists everywhere
+-- 4) Remove legacy company_code column if present
+CALL drop_col_if_exists(DATABASE(), 'companies', 'company_code');
+
+-- 5) Optional legacy support: ensure companyId (camelCase) exists everywhere
 DELIMITER $$
 DROP PROCEDURE IF EXISTS add_company_id_all_tables $$
 CREATE PROCEDURE add_company_id_all_tables()
@@ -141,4 +160,5 @@ CALL add_company_id_all_tables();
 
 -- Cleanup helpers
 DROP PROCEDURE add_company_id_all_tables;
-DROP PROCEDURE add_col_if_missing; 
+DROP PROCEDURE add_col_if_missing;
+DROP PROCEDURE drop_col_if_exists; 
