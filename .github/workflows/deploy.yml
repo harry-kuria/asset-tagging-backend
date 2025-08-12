@@ -500,6 +500,25 @@ jobs:
         sudo fuser -k 80/tcp 2>/dev/null || true
         sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml up -d --remove-orphans
 
+        # Quick diagnostics after start
+        echo "🔎 Post-start container status:"
+        sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml ps || true
+        sudo docker ps || true
+        NGINX_CID=$(sudo docker ps --filter name=asset-tagging-nginx --format '{{.ID}}' | head -n1)
+        APP_CID=$(sudo docker ps --filter name=asset-tagging-app --format '{{.ID}}' | head -n1)
+        if [ -n "$NGINX_CID" ]; then
+          echo "--- Last 60 lines of nginx logs ---"
+          sudo docker logs --tail 60 "$NGINX_CID" || true
+        else
+          echo "⚠️ nginx container not found or not running"
+        fi
+        if [ -n "$APP_CID" ]; then
+          echo "--- Last 60 lines of app logs ---"
+          sudo docker logs --tail 60 "$APP_CID" || true
+        else
+          echo "⚠️ app container not found or not running"
+        fi
+
         # Obtain/renew SSL certificates using certbot (webroot)
         if [ -n "${LE_EMAIL}" ]; then
           # Issue certs once if not present; otherwise rely on systemd timer to renew
