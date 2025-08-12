@@ -125,19 +125,19 @@ type CompanySetting struct {
 
 // LoginRequest represents login request
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	CompanyCode string `json:"company_code" binding:"required"`
+	Username    string `json:"username" binding:"required"`
+	Password    string `json:"password" binding:"required"`
+	CompanyCode string `json:"company_code"` // optional; if empty, login resolves by username only
 }
 
 // RegisterCompanyRequest represents company registration request
 type RegisterCompanyRequest struct {
-	CompanyName string `json:"company_name" binding:"required"`
-	CompanyCode string `json:"company_code" binding:"required"`
-	Email       string `json:"email" binding:"required,email"`
-	Phone       string `json:"phone"`
-	Address     string `json:"address"`
-	Industry    string `json:"industry"`
+	CompanyName string              `json:"company_name" binding:"required"`
+	CompanyCode string              `json:"company_code"` // optional; server will auto-generate if empty
+	Email       string              `json:"email" binding:"required,email"`
+	Phone       string              `json:"phone"`
+	Address     string              `json:"address"`
+	Industry    string              `json:"industry"`
 	AdminUser   RegisterUserRequest `json:"admin_user" binding:"required"`
 }
 

@@ -194,3 +194,29 @@ Your Node.js backend has been successfully converted to Go with:
 - ✅ Full Docker support
 
 The Go backend is ready for production use and will provide significantly better performance than the original Node.js version! 
+
+# Database Bootstrap and Migration
+
+Use `backend/schema.sql` to create base tables on a new RDS database, then run `backend/migrations/migration.sql` to add `companyId` to legacy tables if present.
+
+Steps on EC2:
+
+1. Upload schema
+
+```bash
+scp -i ~/.ssh/asset-ec2 backend/schema.sql ubuntu@<EC2_IP>:/tmp/schema.sql
+```
+
+2. Apply to RDS
+
+```bash
+ssh -i ~/.ssh/asset-ec2 ubuntu@<EC2_IP> \
+  "mysql -h <RDS_ENDPOINT> -P 3306 -u <DB_USER> -p'<DB_PASSWORD>' < /tmp/schema.sql"
+```
+
+3. Optional migration (adds `companyId` to existing tables)
+
+```bash
+ssh -i ~/.ssh/asset-ec2 ubuntu@<EC2_IP> \
+  "mysql -h <RDS_ENDPOINT> -P 3306 -u <DB_USER> -p'<DB_PASSWORD>' -D asset_management < backend/migrations/migration.sql"
+``` 

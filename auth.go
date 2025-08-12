@@ -2,9 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,23 +34,34 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
-	// First, find the company by company code
+	// Resolve company: prefer provided company_code; otherwise resolve by first active user with username
 	var company Company
-	err := db.QueryRow(`
-		SELECT id, company_name, company_code, email, subscription_plan, is_active, trial_ends_at 
-		FROM companies 
-		WHERE company_code = ? AND is_active = true
-	`, req.CompanyCode).Scan(
-		&company.ID, &company.CompanyName, &company.CompanyCode, 
-		&company.Email, &company.SubscriptionPlan, &company.IsActive, &company.TrialEndsAt,
-	)
+	var err error
+	if req.CompanyCode != "" {
+		err = db.QueryRow(`
+			SELECT id, company_name, company_code, email, subscription_plan, is_active, trial_ends_at 
+			FROM companies 
+			WHERE company_code = ? AND is_active = true
+		`, req.CompanyCode).Scan(
+			&company.ID, &company.CompanyName, &company.CompanyCode, 
+			&company.Email, &company.SubscriptionPlan, &company.IsActive, &company.TrialEndsAt,
+		)
+	} else {
+		err = db.QueryRow(`
+			SELECT c.id, c.company_name, c.company_code, c.email, c.subscription_plan, c.is_active, c.trial_ends_at
+			FROM companies c
+			JOIN users u ON u.company_id = c.id AND u.username = ? AND u.is_active = true
+			WHERE c.is_active = true
+			ORDER BY c.id LIMIT 1
+		`, req.Username).Scan(
+			&company.ID, &company.CompanyName, &company.CompanyCode, 
+			&company.Email, &company.SubscriptionPlan, &company.IsActive, &company.TrialEndsAt,
+		)
+	}
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusUnauthorized, APIResponse{
-				Success: false,
-				Error:   "Invalid company code",
-			})
+			c.JSON(http.StatusUnauthorized, APIResponse{ Success: false, Error: "Invalid credentials or company" })
 			return
 		}
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -173,15 +186,30 @@ func registerCompanyHandler(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	// Check if company code already exists
+	// Ensure unique company_code; auto-generate if missing
 	var existingID int
-	err = tx.QueryRow("SELECT id FROM companies WHERE company_code = ?", req.CompanyCode).Scan(&existingID)
-	if err == nil {
-		c.JSON(http.StatusConflict, APIResponse{
-			Success: false,
-			Error:   "Company code already exists",
-		})
-		return
+	if req.CompanyCode == "" { 
+		// generate code from company name
+		base := ""
+		if len(req.CompanyName) >= 3 { base = req.CompanyName[:3] } else { base = req.CompanyName }
+		base = strings.ToUpper(strings.ReplaceAll(base, " ", ""))
+		// find available code
+		candidate := base
+		idx := 1
+		for {
+			var tmp int
+			e := tx.QueryRow("SELECT id FROM companies WHERE company_code = ?", candidate).Scan(&tmp)
+			if e == sql.ErrNoRows { break }
+			idx++
+			candidate = fmt.Sprintf("%s%d", base, idx)
+		}
+		req.CompanyCode = candidate
+	} else {
+		err = tx.QueryRow("SELECT id FROM companies WHERE company_code = ?", req.CompanyCode).Scan(&existingID)
+		if err == nil {
+			c.JSON(http.StatusConflict, APIResponse{ Success: false, Error: "Company code already exists" })
+			return
+		}
 	}
 
 	// Check if company email already exists
