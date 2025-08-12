@@ -554,7 +554,10 @@ jobs:
 
           # Install systemd timer to renew certs daily and reload nginx on success
           echo "🗓️  Installing certbot renew systemd timer"
-          sudo /bin/bash -c 'cat > /etc/systemd/system/certbot-renew.service <<"UNIT"\n[Unit]\nDescription=Renew Let\'s Encrypt certificates (dockerized certbot)\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot\nExecStartPost=/usr/bin/bash -c "CID=$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1); [ -n \"$CID\" ] && docker exec \"$CID\" nginx -s reload || true"\nUNIT'
+          # Helper script to reload nginx inside the container after renew
+          sudo /bin/bash -c 'cat > /usr/local/bin/reload-nginx-after-renew.sh <<"SH"\n#!/usr/bin/env bash\nset -e\nCID=$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1)\n[ -n "$CID" ] && docker exec "$CID" nginx -s reload || true\nSH'
+          sudo chmod +x /usr/local/bin/reload-nginx-after-renew.sh
+          sudo /bin/bash -c 'cat > /etc/systemd/system/certbot-renew.service <<"UNIT"\n[Unit]\nDescription=Renew Lets Encrypt certificates (dockerized certbot)\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot\nExecStartPost=/usr/local/bin/reload-nginx-after-renew.sh\nUNIT'
           sudo /bin/bash -c 'cat > /etc/systemd/system/certbot-renew.timer <<"UNIT"\n[Unit]\nDescription=Daily certbot renew timer\n\n[Timer]\nOnCalendar=daily\nPersistent=true\n\n[Install]\nWantedBy=timers.target\nUNIT'
           sudo systemctl daemon-reload || true
           sudo systemctl enable --now certbot-renew.timer || true
