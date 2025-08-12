@@ -415,70 +415,78 @@ jobs:
         LE_EMAIL="${LE_EMAIL:-}"
         sudo mkdir -p /opt/asset-tagging/nginx/conf.d /opt/asset-tagging/nginx/certbot /opt/asset-tagging/nginx/letsencrypt
  
+        # Ensure envsubst is available for templating
+        if ! command -v envsubst >/dev/null 2>&1; then
+          echo "📦 Installing envsubst (gettext-base)..."
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update -y
+          sudo apt-get install -y gettext-base
+        fi
+
         # Initial HTTP-only config to satisfy HTTP-01 challenge and serve apps
-        sudo bash -c "printf '%s\n' \
-          'server {' \
-          '  listen 80;' \
-          '  server_name ${API_SERVER_NAME};' \
-          '' \
-          '  location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }' \
-          '' \
-          '  # CORS for API' \
-          '  if (\\$request_method = OPTIONS) {' \
-          '    add_header Access-Control-Allow-Origin "*" always;' \
-          '    add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;' \
-          '    add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;' \
-          '    add_header Access-Control-Max-Age "86400" always;' \
-          '    return 204;' \
-          '  }' \
-          '  add_header Access-Control-Allow-Origin "*" always;' \
-          '' \
-          '  location / {' \
-          '    proxy_set_header Host \\$host;' \
-          '    proxy_set_header X-Real-IP \\$remote_addr;' \
-          '    proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;' \
-          '    proxy_set_header X-Forwarded-Proto \\$scheme;' \
-          '    proxy_pass http://asset-tagging-app:5000;' \
-          '  }' \
-          '' \
-          '  location = /health { proxy_pass http://asset-tagging-app:5000/health; }' \
-          '}' \
-          '' \
-          'server {' \
-          '  listen 80;' \
-          '  server_name ${GRAFANA_SERVER_NAME};' \
-          '  location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }' \
-          '  location / { proxy_pass http://grafana:3000; }' \
-          '}' \
-          '' \
-          'server {' \
-          '  listen 80;' \
-          '  server_name ${PROMETHEUS_SERVER_NAME};' \
-          '  location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }' \
-          '  location / { proxy_pass http://prometheus:9090; }' \
-          '}' \
-          > /opt/asset-tagging/nginx/conf.d/default.conf"
-        
-         # Create override atomically with sudo, expanding variables safely
-         sudo bash -c "printf '%s\n' \
-           'services:' \
-           '  app:' \
-           '    image: ${FULL_IMAGE}' \
-           '  grafana:' \
-           '    image: ${GRAFANA_IMAGE}' \
-           '  prometheus:' \
-           '    image: quay.io/prometheus/prometheus:latest' \
-           '  nginx:' \
-           '    image: public.ecr.aws/docker/library/nginx:alpine' \
-           '    volumes:' \
-           '      - ./nginx/conf.d:/etc/nginx/conf.d:ro' \
-           '      - ./nginx/certbot:/var/www/certbot:ro' \
-           '      - ./nginx/letsencrypt:/etc/letsencrypt:ro' \
-           '    ports:' \
-           '      - "80:80"' \
-           '      - "443:443"' \
-           > docker-compose.override.yml"
-        
+        cat <<'NGINX_HTTP' | envsubst '${API_SERVER_NAME} ${GRAFANA_SERVER_NAME} ${PROMETHEUS_SERVER_NAME}' | sudo tee /opt/asset-tagging/nginx/conf.d/default.conf > /dev/null
+        server {
+          listen 80;
+          server_name ${API_SERVER_NAME};
+
+          location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+
+          # CORS for API
+          if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+            add_header Access-Control-Max-Age "86400" always;
+            return 204;
+          }
+          add_header Access-Control-Allow-Origin "*" always;
+
+          location / {
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_pass http://asset-tagging-app:5000;
+          }
+
+          location = /health { proxy_pass http://asset-tagging-app:5000/health; }
+        }
+
+        server {
+          listen 80;
+          server_name ${GRAFANA_SERVER_NAME};
+          location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+          location / { proxy_pass http://grafana:3000; }
+        }
+
+        server {
+          listen 80;
+          server_name ${PROMETHEUS_SERVER_NAME};
+          location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+          location / { proxy_pass http://prometheus:9090; }
+        }
+        NGINX_HTTP
+ 
+        # Create override atomically with sudo, expanding variables safely
+        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE}' | sudo tee docker-compose.override.yml > /dev/null
+        services:
+          app:
+            image: ${FULL_IMAGE}
+          grafana:
+            image: ${GRAFANA_IMAGE}
+          prometheus:
+            image: quay.io/prometheus/prometheus:latest
+          nginx:
+            image: public.ecr.aws/docker/library/nginx:alpine
+            volumes:
+              - ./nginx/conf.d:/etc/nginx/conf.d:ro
+              - ./nginx/certbot:/var/www/certbot:ro
+              - ./nginx/letsencrypt:/etc/letsencrypt:ro
+            ports:
+              - "80:80"
+              - "443:443"
+        DOCKER_OVR
+ 
         # Start services (this will pull other images as needed)
         echo "🚀 Starting services..."
         echo "🛑 Ensuring host port 80 is free..."
@@ -508,43 +516,43 @@ jobs:
           # If certs exist, switch to HTTPS config and reload
           if sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${API_SERVER_NAME}"; then
             echo "🔁 Enabling HTTPS configuration..."
-            sudo bash -c "printf '%s\n' \
-              'server {' \
-              '  listen 80;' \
-              '  server_name ${API_SERVER_NAME};' \
-              '  location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }' \
-              '  return 301 https://\$host\$request_uri;' \
-              '}' \
-              'server {' \
-              '  listen 443 ssl;' \
-              '  server_name ${API_SERVER_NAME};' \
-              '  ssl_certificate /etc/letsencrypt/live/${API_SERVER_NAME}/fullchain.pem;' \
-              '  ssl_certificate_key /etc/letsencrypt/live/${API_SERVER_NAME}/privkey.pem;' \
-              '  # CORS for API' \
-              '  if (\$request_method = OPTIONS) {' \
-              '    add_header Access-Control-Allow-Origin "*" always;' \
-              '    add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;' \
-              '    add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;' \
-              '    add_header Access-Control-Max-Age "86400" always;' \
-              '    return 204;' \
-              '  }' \
-              '  add_header Access-Control-Allow-Origin "*" always;' \
-              '  location / {' \
-              '    proxy_set_header Host \$host;' \
-              '    proxy_set_header X-Real-IP \$remote_addr;' \
-              '    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' \
-              '    proxy_set_header X-Forwarded-Proto \$scheme;' \
-              '    proxy_pass http://asset-tagging-app:5000;' \
-              '  }' \
-              '  location = /health { proxy_pass http://asset-tagging-app:5000/health; }' \
-              '}' \
-              '' \
-              'server { listen 80; server_name ${GRAFANA_SERVER_NAME}; location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; } return 301 https://\$host\$request_uri; }' \
-              'server { listen 443 ssl; server_name ${GRAFANA_SERVER_NAME}; ssl_certificate /etc/letsencrypt/live/${GRAFANA_SERVER_NAME}/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/${GRAFANA_SERVER_NAME}/privkey.pem; location / { proxy_pass http://grafana:3000; } }' \
-              '' \
-              'server { listen 80; server_name ${PROMETHEUS_SERVER_NAME}; location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; } return 301 https://\$host\$request_uri; }' \
-              'server { listen 443 ssl; server_name ${PROMETHEUS_SERVER_NAME}; ssl_certificate /etc/letsencrypt/live/${PROMETHEUS_SERVER_NAME}/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/${PROMETHEUS_SERVER_NAME}/privkey.pem; location / { proxy_pass http://prometheus:9090; } }' \
-              > /opt/asset-tagging/nginx/conf.d/default.conf"
+            cat <<'NGINX_HTTPS' | envsubst '${API_SERVER_NAME} ${GRAFANA_SERVER_NAME} ${PROMETHEUS_SERVER_NAME}' | sudo tee /opt/asset-tagging/nginx/conf.d/default.conf > /dev/null
+            server {
+              listen 80;
+              server_name ${API_SERVER_NAME};
+              location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+              return 301 https://$host$request_uri;
+            }
+            server {
+              listen 443 ssl;
+              server_name ${API_SERVER_NAME};
+              ssl_certificate /etc/letsencrypt/live/${API_SERVER_NAME}/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/${API_SERVER_NAME}/privkey.pem;
+              # CORS for API
+              if ($request_method = OPTIONS) {
+                add_header Access-Control-Allow-Origin "*" always;
+                add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+                add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+                add_header Access-Control-Max-Age "86400" always;
+                return 204;
+              }
+              add_header Access-Control-Allow-Origin "*" always;
+              location / {
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_pass http://asset-tagging-app:5000;
+              }
+              location = /health { proxy_pass http://asset-tagging-app:5000/health; }
+            }
+
+            server { listen 80; server_name ${GRAFANA_SERVER_NAME}; location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; } return 301 https://$host$request_uri; }
+            server { listen 443 ssl; server_name ${GRAFANA_SERVER_NAME}; ssl_certificate /etc/letsencrypt/live/${GRAFANA_SERVER_NAME}/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/${GRAFANA_SERVER_NAME}/privkey.pem; location / { proxy_pass http://grafana:3000; } }
+
+            server { listen 80; server_name ${PROMETHEUS_SERVER_NAME}; location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; } return 301 https://$host$request_uri; }
+            server { listen 443 ssl; server_name ${PROMETHEUS_SERVER_NAME}; ssl_certificate /etc/letsencrypt/live/${PROMETHEUS_SERVER_NAME}/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/${PROMETHEUS_SERVER_NAME}/privkey.pem; location / { proxy_pass http://prometheus:9090; } }
+            NGINX_HTTPS
             # Reload nginx
             NGINX_CID=$(sudo docker ps --filter name=asset-tagging-nginx --format '{{.ID}}' | head -n1)
             if [ -n "$NGINX_CID" ]; then sudo docker exec "$NGINX_CID" nginx -s reload || true; fi
