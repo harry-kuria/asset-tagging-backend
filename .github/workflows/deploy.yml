@@ -372,6 +372,8 @@ jobs:
         ECR_REGISTRY="${ECR_REGISTRY}"
         ECR_REPOSITORY="asset-tagging-backend"
         FULL_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+        # Export variables so envsubst and docker compose can see them
+        export FULL_IMAGE
         
         echo "📦 Pulling image: ${FULL_IMAGE}"
         sudo docker pull "${FULL_IMAGE}"
@@ -403,6 +405,7 @@ jobs:
           # Attempt Docker Hub login only if creds are present (already done earlier)
           sudo docker pull "${GRAFANA_IMAGE}" || true
         fi
+        export GRAFANA_IMAGE
         
         # Pre-pull public images to avoid rate limits
         sudo docker pull quay.io/prometheus/prometheus:latest || true
@@ -412,6 +415,7 @@ jobs:
         API_SERVER_NAME="${API_SERVER_NAME:-api.moowigroup.com}"
         GRAFANA_SERVER_NAME="${GRAFANA_SERVER_NAME:-graf.moowigroup.com}"
         PROMETHEUS_SERVER_NAME="${PROMETHEUS_SERVER_NAME:-prom.moowigroup.com}"
+        export API_SERVER_NAME GRAFANA_SERVER_NAME PROMETHEUS_SERVER_NAME
         LE_EMAIL="${LE_EMAIL:-}"
         sudo mkdir -p /opt/asset-tagging/nginx/conf.d /opt/asset-tagging/nginx/certbot /opt/asset-tagging/nginx/letsencrypt
  
