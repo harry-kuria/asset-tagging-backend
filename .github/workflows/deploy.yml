@@ -500,13 +500,20 @@ jobs:
 
         # Obtain/renew SSL certificates using certbot (webroot)
         if [ -n "${LE_EMAIL}" ]; then
-          echo "🔐 Obtaining Let's Encrypt certificates for ${API_SERVER_NAME}, ${GRAFANA_SERVER_NAME}, ${PROMETHEUS_SERVER_NAME}"
-          sudo docker run --rm \
-            -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt \
-            -v /opt/asset-tagging/nginx/certbot:/var/www/certbot \
-            certbot/certbot certonly --non-interactive --agree-tos --email "${LE_EMAIL}" \
-            --webroot -w /var/www/certbot \
-            -d "${API_SERVER_NAME}" -d "${GRAFANA_SERVER_NAME}" -d "${PROMETHEUS_SERVER_NAME}" || true
+          # Issue certs once if not present; otherwise rely on systemd timer to renew
+          if ! sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${API_SERVER_NAME}" || \
+             ! sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${GRAFANA_SERVER_NAME}" || \
+             ! sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${PROMETHEUS_SERVER_NAME}"; then
+            echo "🔐 Obtaining Let's Encrypt certificates for ${API_SERVER_NAME}, ${GRAFANA_SERVER_NAME}, ${PROMETHEUS_SERVER_NAME} (first-time issuance)"
+            sudo docker run --rm \
+              -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt \
+              -v /opt/asset-tagging/nginx/certbot:/var/www/certbot \
+              certbot/certbot certonly --non-interactive --agree-tos --email "${LE_EMAIL}" \
+              --webroot -w /var/www/certbot \
+              -d "${API_SERVER_NAME}" -d "${GRAFANA_SERVER_NAME}" -d "${PROMETHEUS_SERVER_NAME}" || true
+          else
+            echo "🔁 Certificates already exist; skipping issuance (will be renewed by systemd timer)"
+          fi
 
           # If certs exist, switch to HTTPS config and reload
           if sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${API_SERVER_NAME}"; then
@@ -524,7 +531,7 @@ jobs:
               '  ssl_certificate /etc/letsencrypt/live/${API_SERVER_NAME}/fullchain.pem;' \
               '  ssl_certificate_key /etc/letsencrypt/live/${API_SERVER_NAME}/privkey.pem;' \
               '  # CORS for API' \
-              '  if (\\$request_method = OPTIONS) {' \
+              '  if (\$request_method = OPTIONS) {' \
               '    add_header Access-Control-Allow-Origin "*" always;' \
               '    add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;' \
               '    add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;' \
@@ -554,6 +561,31 @@ jobs:
           else
             echo "⚠️  SSL certificates not found; continuing with HTTP only"
           fi
+
+          # Install systemd timer to renew certs daily and reload nginx on success
+          echo "🗓️  Installing certbot renew systemd timer"
+          sudo bash -c "printf '%s\n' \
+            '[Unit]' \
+            'Description=Renew Let\'s Encrypt certificates (dockerized certbot)' \
+            '' \
+            '[Service]' \
+            'Type=oneshot' \
+            'ExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot' \
+            'ExecStartPost=/usr/bin/bash -c "CID=\$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1); [ -n \"\$CID\" ] && docker exec \"\$CID\" nginx -s reload || true"' \
+            > /etc/systemd/system/certbot-renew.service"
+          sudo bash -c "printf '%s\n' \
+            '[Unit]' \
+            'Description=Daily certbot renew timer' \
+            '' \
+            '[Timer]' \
+            'OnCalendar=daily' \
+            'Persistent=true' \
+            '' \
+            '[Install]' \
+            'WantedBy=timers.target' \
+            > /etc/systemd/system/certbot-renew.timer"
+          sudo systemctl daemon-reload || true
+          sudo systemctl enable --now certbot-renew.timer || true
         else
           echo "ℹ️ Let's Encrypt email not provided; serving HTTP only"
         fi
