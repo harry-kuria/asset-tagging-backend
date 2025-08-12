@@ -492,14 +492,22 @@ jobs:
         export DB_HOST DB_USER DB_PASS DB_NAME DB_PORT HOST USERNAME PASSWORD DB PORT JWT_SECRET
 
         # Write env file for the app to avoid YAML indentation issues
+        E_HOST=$(printf '%s' "${HOST}" | sed -e 's/\\/\\\\/g' -e 's/\"/\\"/g')
+        E_USERNAME=$(printf '%s' "${USERNAME}" | sed -e 's/\\/\\\\/g' -e 's/\"/\\"/g')
+        E_PASSWORD=$(printf '%s' "${PASSWORD}" | sed -e 's/\\/\\\\/g' -e 's/\"/\\"/g')
+        E_DB=$(printf '%s' "${DB}" | sed -e 's/\\/\\\\/g' -e 's/\"/\\"/g')
+        E_PORT=$(printf '%s' "${PORT}" | sed -e 's/\\/\\\\/g' -e 's/\"/\\"/g')
+        E_JWT=$(printf '%s' "${JWT_SECRET}" | sed -e 's/\\/\\\\/g' -e 's/\"/\\"/g')
         sudo bash -c "printf '%s\n' \
-          'HOST='"${HOST}" \
-          'USERNAME='"${USERNAME}" \
-          'PASSWORD='"${PASSWORD}" \
-          'DB='"${DB}" \
-          'PORT='"${PORT}" \
-          'JWT_SECRET='"${JWT_SECRET}" \
+          'HOST="'"${E_HOST}"'" \
+          'USERNAME="'"${E_USERNAME}"'" \
+          'PASSWORD="'"${E_PASSWORD}"'" \
+          'DB="'"${E_DB}"'" \
+          'PORT="'"${E_PORT}"'" \
+          'JWT_SECRET="'"${E_JWT}"'" \
           > /opt/asset-tagging/.env.app"
+        echo "--- .env.app (masked) ---"
+        sudo sed -E 's/^PASSWORD=.*/PASSWORD=*** (masked)/; s/^JWT_SECRET=.*/JWT_SECRET=*** (masked)/' /opt/asset-tagging/.env.app | sed -n '1,120p'
  
         cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE}' | sudo tee docker-compose.override.yml > /dev/null
         services:
