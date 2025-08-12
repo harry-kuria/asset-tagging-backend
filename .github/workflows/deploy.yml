@@ -490,17 +490,23 @@ jobs:
         DB="${DB_NAME}"
         PORT="5000"
         export DB_HOST DB_USER DB_PASS DB_NAME DB_PORT HOST USERNAME PASSWORD DB PORT JWT_SECRET
-        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE} ${DB_HOST} ${DB_USER} ${DB_PASS} ${DB_NAME} ${DB_PORT} ${HOST} ${USERNAME} ${PASSWORD} ${DB} ${PORT} ${JWT_SECRET}' | sudo tee docker-compose.override.yml > /dev/null
+
+        # Write env file for the app to avoid YAML indentation issues
+        sudo bash -c "printf '%s\n' \
+          'HOST='"${HOST}" \
+          'USERNAME='"${USERNAME}" \
+          'PASSWORD='"${PASSWORD}" \
+          'DB='"${DB}" \
+          'PORT='"${PORT}" \
+          'JWT_SECRET='"${JWT_SECRET}" \
+          > /opt/asset-tagging/.env.app"
+ 
+        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE}' | sudo tee docker-compose.override.yml > /dev/null
         services:
           app:
             image: ${FULL_IMAGE}
-            environment:
-              - HOST=${HOST}
-              - USERNAME=${USERNAME}
-              - PASSWORD=${PASSWORD}
-              - DB=${DB}
-              - PORT=${PORT}
-              - JWT_SECRET=${JWT_SECRET}
+            env_file:
+              - .env.app
             grafana:
               image: ${GRAFANA_IMAGE}
           prometheus:
