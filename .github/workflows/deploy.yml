@@ -493,12 +493,12 @@ jobs:
 
         # Write env file for the app to avoid YAML indentation issues
         sudo bash -c "printf '%s\n' \
-          HOST='${HOST}' \
-          USERNAME='${USERNAME}' \
-          PASSWORD='${PASSWORD}' \
-          DB='${DB}' \
-          PORT='${PORT}' \
-          JWT_SECRET='${JWT_SECRET}' \
+          HOST=${HOST} \
+          USERNAME=${USERNAME} \
+          PASSWORD=${PASSWORD} \
+          DB=${DB} \
+          PORT=${PORT} \
+          JWT_SECRET=${JWT_SECRET} \
           > /opt/asset-tagging/.env.app"
         echo "--- .env.app (masked) ---"
         sudo sed -E 's/^PASSWORD=.*/PASSWORD=*** (masked)/; s/^JWT_SECRET=.*/JWT_SECRET=*** (masked)/' /opt/asset-tagging/.env.app | sed -n '1,120p'
