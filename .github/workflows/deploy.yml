@@ -1,59 +1,17 @@
-name: 🚀 Deploy Asset Tagging Backend
+name: Deploy Backend (Simple)
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
     branches: [ main ]
   workflow_dispatch:
     inputs:
-      deploy_only:
-        description: 'Skip Terraform and deploy to existing EC2 only'
-        required: false
-        type: boolean
-        default: false
       ec2_public_ip:
-        description: 'EC2 public IP for deploy-only runs (overrides secret if provided)'
-        required: false
-        type: string
-        default: ''
-      rds_endpoint:
-        description: 'RDS endpoint for migration/health (overrides secret if provided)'
-        required: false
-        type: string
-        default: ''
-      db_name:
-        description: 'Database name to run migrations against (overrides secret if provided)'
-        required: false
-        type: string
-        default: ''
-      db_user:
-        description: 'Database user to connect as (overrides secret if provided)'
+        description: 'EC2 public IP (overrides secret if provided)'
         required: false
         type: string
         default: ''
       sql_path:
-        description: 'Path to SQL file to run (e.g., backend/migrations/add_company_id_all_tables.sql)'
-        required: false
-        type: string
-        default: ''
-      api_server_name:
-        description: 'Public domain for the API (e.g., api.example.com)'
-        required: false
-        type: string
-        default: 'api.moowigroup.com'
-      grafana_server_name:
-        description: 'Public domain for Grafana (e.g., graf.example.com)'
-        required: false
-        type: string
-        default: 'graf.moowigroup.com'
-      prometheus_server_name:
-        description: 'Public domain for Prometheus (e.g., prom.example.com)'
-        required: false
-        type: string
-        default: 'prom.moowigroup.com'
-      letsencrypt_email:
-        description: "Email for Let's Encrypt registration"
+        description: 'Optional SQL file path to run as migration'
         required: false
         type: string
         default: ''
@@ -61,909 +19,155 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: asset-tagging-backend
-  INFRASTRUCTURE_REPO: harry-kuria/moowi-IAC
 
 jobs:
-  # Test the backend application
-  test:
-    name: 🧪 Test Backend
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-      
-    - name: 🐹 Setup Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.22.x'
-        cache: true
-        
-    - name: 📦 Install dependencies
-      run: go mod download
-      
-    - name: 🧪 Run tests
-      run: go test -v ./...
-      
-    - name: 🔍 Run linting
-      run: |
-        go install golang.org/x/lint/golint@latest
-        golint -set_exit_status ./...
-        
-    - name: 🔒 Run security scan
-      run: |
-        go env -w GOFLAGS='-buildvcs=false'
-        go install github.com/securego/gosec/v2/cmd/gosec@v2.20.0
-        echo "$HOME/go/bin" >> $GITHUB_PATH
-        gosec ./...
-
-  # Build and push Docker image
   build:
-    name: 🐳 Build & Push Docker Image
-    needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
-    
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: 🔐 Configure AWS credentials
+
+    - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: 🏗️ Ensure ECR repository exists and is mutable
+    - name: Ensure ECR repo exists
       run: |
         aws ecr describe-repositories --repository-names $ECR_REPOSITORY >/dev/null 2>&1 || \
-        aws ecr create-repository \
-          --repository-name $ECR_REPOSITORY \
-          --image-tag-mutability MUTABLE \
-          --image-scanning-configuration scanOnPush=true
-        # Force mutability in case repo already existed and was immutable
-        aws ecr put-image-tag-mutability \
-          --repository-name $ECR_REPOSITORY \
-          --image-tag-mutability MUTABLE || true
-      
-    - name: 🔑 Login to Amazon ECR
+        aws ecr create-repository --repository-name $ECR_REPOSITORY --image-tag-mutability MUTABLE
+
+    - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
-      
-    - name: 🏗️ Build, tag, and push image to Amazon ECR
+
+    - name: Build and push image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
 
-  # Deploy to production
   deploy:
-    name: 🚫 Provision Infrastructure (disabled)
     needs: build
     runs-on: ubuntu-latest
-    if: false
-    
-    steps:
-    - name: 📥 Checkout infrastructure repo
-      uses: actions/checkout@v4
-      with:
-        repository: ${{ env.INFRASTRUCTURE_REPO }}
-        token: ${{ secrets.GH_PAT || github.token }}
-        path: infrastructure
-        ref: main
-        
-    - name: 🔐 Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: 🧹 Pre-clean conflicting named resources (safe, idempotent)
-      run: |
-        set -e
-        echo "Checking for pre-existing resources that may conflict with names..."
-        ALB_ARN=$(aws elbv2 describe-load-balancers --region $AWS_REGION --names asset-tagging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || echo "None")
-        TG_ARN=$(aws elbv2 describe-target-groups --region $AWS_REGION --names asset-tagging-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "None")
-        # Delete listeners if ALB exists
-        if [ "$ALB_ARN" != "None" ] && [ -n "$ALB_ARN" ]; then
-          echo "Found existing ALB: $ALB_ARN. Deleting listeners..."
-          LISTENERS=$(aws elbv2 describe-listeners --region $AWS_REGION --load-balancer-arn "$ALB_ARN" --query 'Listeners[].ListenerArn' --output text 2>/dev/null || true)
-          for L in $LISTENERS; do
-            aws elbv2 delete-listener --region $AWS_REGION --listener-arn "$L" || true
-          done
-          echo "Deleting ALB..."
-          aws elbv2 delete-load-balancer --region $AWS_REGION --load-balancer-arn "$ALB_ARN" || true
-          aws elbv2 wait load-balancer-deleted --region $AWS_REGION --load-balancer-arns "$ALB_ARN" || true
-        else
-          echo "No pre-existing ALB found."
-        fi
-        # Delete target group
-        if [ "$TG_ARN" != "None" ] && [ -n "$TG_ARN" ]; then
-          echo "Found existing TG: $TG_ARN. Deregistering targets and deleting TG..."
-          aws elbv2 modify-target-group-attributes --region $AWS_REGION --target-group-arn "$TG_ARN" --attributes Key=deregistration_delay.timeout_seconds,Value=30 || true
-          TARGET_IDS=$(aws elbv2 describe-target-health --region $AWS_REGION --target-group-arn "$TG_ARN" --query 'TargetHealthDescriptions[].Target.Id' --output text 2>/dev/null || true)
-          for id in $TARGET_IDS; do
-            aws elbv2 deregister-targets --region $AWS_REGION --target-group-arn "$TG_ARN" --targets Id=$id || true
-          done
-          sleep 10
-          aws elbv2 delete-target-group --region $AWS_REGION --target-group-arn "$TG_ARN" || true
-        else
-          echo "No pre-existing TG found."
-        fi
-        # Delete DB subnet group
-        echo "Attempting to delete pre-existing DB subnet group (if any)..."
-        aws rds delete-db-subnet-group --region $AWS_REGION --db-subnet-group-name asset-tagging-db-subnet-group || true
-        echo "Pre-clean complete."
-        
-    - name: 📦 Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: "1.5.0"
-        
-    - name: 🔍 Terraform Format Check
-      working-directory: ./infrastructure/terraform
-      run: |
-        terraform fmt -recursive
-        terraform fmt -recursive -check -diff
-      
-    - name: ✅ Terraform Init
-      working-directory: ./infrastructure/terraform
-      env:
-        TF_IN_AUTOMATION: 'true'
-        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
-        TF_VAR_instance_type: 't2.micro'
-        TF_VAR_manage_db: 'false'
-      run: terraform init
-      
-    - name: 🔎 Discover existing DB instance (if any)
-      run: |
-        set -e
-        echo "Checking for pre-existing RDS instance with identifier asset-tagging-db..."
-        DB_EXISTS=$(aws rds describe-db-instances --region $AWS_REGION --db-instance-identifier asset-tagging-db >/dev/null 2>&1 && echo yes || echo no)
-        echo "DB_EXISTS=${DB_EXISTS}" >> $GITHUB_ENV
-      
-    - name: 🧭 Import existing DB instance (one-time)
-      if: env.DB_EXISTS == 'yes'
-      working-directory: ./infrastructure/terraform
-      env:
-        TF_IN_AUTOMATION: 'true'
-        TF_INPUT: 'false'
-        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
-      run: |
-        terraform import aws_db_instance.main asset-tagging-db || true
-        terraform init -reconfigure || true
-      
-    - name: 📋 Terraform Plan
-      working-directory: ./infrastructure/terraform
-      env:
-        TF_IN_AUTOMATION: 'true'
-        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
-        TF_VAR_instance_type: 't2.micro'
-        TF_VAR_manage_db: 'false'
-      run: terraform plan -input=false -out=tfplan
-      
-    - name: 🚀 Terraform Apply
-      working-directory: ./infrastructure/terraform
-      env:
-        TF_IN_AUTOMATION: 'true'
-        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        TF_VAR_ssh_key_name: ${{ secrets.SSH_KEY_NAME }}
-        TF_VAR_instance_type: 't2.micro'
-        TF_VAR_manage_db: 'false'
-      run: terraform apply -input=false -auto-approve tfplan
-      
-    # Terraform outputs step removed because provisioning is disabled
-
-  # Deploy application to EC2
-  deploy-application:
-    name: 🚀 Deploy Application
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     env:
       EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
-      SSH_USER: ${{ secrets.EC2_SSH_USER }}
-    
     steps:
-    - name: 📥 Checkout infrastructure repo
-      uses: actions/checkout@v4
-      with:
-        repository: ${{ env.INFRASTRUCTURE_REPO }}
-        token: ${{ secrets.GH_PAT || github.token }}
-        path: infrastructure
-        ref: main
-        
-    - name: 🔐 Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: 🔑 Login to Amazon ECR
+    - name: Login to Amazon ECR (for registry value)
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
-      
-    - name: 🔑 Setup SSH
+
+    - name: Setup SSH
       run: |
         set -e
         mkdir -p ~/.ssh
-        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY secret is required and not set."; exit 1; fi
-        # Write key, handling both literal newlines and \n-escaped forms and CRLF
-        rm -f ~/.ssh/id_rsa
-        printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa || true
-        # If it still doesn't look like a key, try base64 decoding
-        if ! grep -q "BEGIN .*PRIVATE KEY" ~/.ssh/id_rsa; then
-          echo "Key does not appear to be raw PEM/OpenSSH. Trying base64 decode..."
-          printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa 2>/dev/null || true
-        fi
+        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY not set"; exit 1; fi
+        printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        # Validate that the key can be loaded and is not passphrase-protected
-        if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-          echo "Invalid SSH private key in secrets (format or passphrase). Ensure it is an unencrypted PEM/OpenSSH key with correct newlines.";
-          exit 1
-        fi
-        : "${SSH_USER:=ubuntu}"
-        if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
+        : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
+        if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP not set"; exit 1; fi
         ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
-        
-    - name: 📋 Create deployment script
+
+    - name: Create simple deploy script
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        cat > deploy-to-server.sh << 'EOF'
-        #!/bin/bash
+        cat > deploy-simple.sh << 'EOF'
+        #!/usr/bin/env bash
         set -e
-        
-        echo "🚀 Starting deployment..."
-        
-        # Update infrastructure repository (skip if git auth fails)
-        cd ~/moowi-IAC
-        if git remote -v | grep -q "https://github.com"; then
-          echo "⚠️  Infrastructure repo uses HTTPS, skipping git pull (auth required)"
-        else
-          git pull origin main || echo "⚠️  Git pull failed, continuing with deployment"
-        fi
-        
-        # Stop current services
-        cd /opt/asset-tagging
-        sudo docker-compose down || true
-        
-        echo "🧹 Pruning unused Docker images and containers to free space..."
-        sudo docker system df || true
-        sudo docker container prune -f || true
-        sudo docker image prune -af || true
-        sudo docker system df || true
-        
-        # Install AWS CLI if not present
-        if ! command -v aws &> /dev/null; then
-          echo "📦 Installing AWS CLI..."
-          cd /tmp
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install --update
-          rm -rf aws awscliv2.zip
-          cd -
-        fi
-        
-        # Login to ECR
-        echo "🔐 Logging into ECR..."
-        aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY}
-        
-        # Login to Docker Hub to avoid rate limits (if credentials available)
-        if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_PASSWORD:-}" ]; then
-          echo "🔐 Logging into Docker Hub..."
-          echo "${DOCKERHUB_PASSWORD}" | sudo docker login --username "${DOCKERHUB_USERNAME}" --password-stdin || true
-        else
-          echo "⚠️  No Docker Hub credentials provided, may hit rate limits"
-        fi
-        
-        # Pull latest image with proper ECR registry
         ECR_REGISTRY="${ECR_REGISTRY}"
         ECR_REPOSITORY="asset-tagging-backend"
-        FULL_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
-        # Export variables so envsubst and docker compose can see them
-        export FULL_IMAGE
-        
-        echo "📦 Pulling image: ${FULL_IMAGE}"
-        sudo docker pull "${FULL_IMAGE}"
-        
-        # Ensure Docker Compose is available (prefer v2 plugin)
+        IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+        echo "==> Preparing host"
+        sudo mkdir -p /opt/asset-tagging
+        cd /opt/asset-tagging
+
+        # Ensure docker compose plugin
         if docker compose version >/dev/null 2>&1; then
           DC="docker compose"
         elif command -v docker-compose >/dev/null 2>&1; then
           DC="docker-compose"
         else
-          echo "📦 Installing Docker Compose v2..."
+          echo "Installing docker compose v2..."
           sudo mkdir -p /usr/local/lib/docker/cli-plugins
           ARCH=$(uname -m)
-          COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64"
-          if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-aarch64"
-          fi
-          sudo curl -sSL "$COMPOSE_URL" -o /usr/local/lib/docker/cli-plugins/docker-compose
+          URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64"
+          [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ] && URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-aarch64"
+          sudo curl -sSL "$URL" -o /usr/local/lib/docker/cli-plugins/docker-compose
           sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           DC="docker compose"
         fi
-        
-        # Resolve Grafana image with fallback (quay -> docker hub)
-        GRAFANA_IMAGE="quay.io/grafana/grafana:latest"
-        echo "📦 Pre-pulling Grafana from ${GRAFANA_IMAGE} (will fallback to Docker Hub if unauthorized)..."
-        if ! sudo docker pull "${GRAFANA_IMAGE}" >/dev/null 2>&1; then
-          echo "⚠️  Unable to pull ${GRAFANA_IMAGE}, falling back to Docker Hub grafana/grafana:latest"
-          GRAFANA_IMAGE="docker.io/grafana/grafana:latest"
-          # Attempt Docker Hub login only if creds are present (already done earlier)
-          sudo docker pull "${GRAFANA_IMAGE}" || true
-        fi
-        export GRAFANA_IMAGE
-        
-        # Pre-pull public images to avoid rate limits
-        sudo docker pull quay.io/prometheus/prometheus:latest || true
-        sudo docker pull public.ecr.aws/docker/library/nginx:alpine || true
 
-        # Prepare Nginx config and ACME dirs
-        API_SERVER_NAME="${API_SERVER_NAME:-api.moowigroup.com}"
-        GRAFANA_SERVER_NAME="${GRAFANA_SERVER_NAME:-graf.moowigroup.com}"
-        PROMETHEUS_SERVER_NAME="${PROMETHEUS_SERVER_NAME:-prom.moowigroup.com}"
-        export API_SERVER_NAME GRAFANA_SERVER_NAME PROMETHEUS_SERVER_NAME
-        LE_EMAIL="${LE_EMAIL:-}"
-        sudo mkdir -p /opt/asset-tagging/nginx/conf.d /opt/asset-tagging/nginx/certbot /opt/asset-tagging/nginx/letsencrypt
- 
-        # Ensure envsubst is available for templating
-        if ! command -v envsubst >/dev/null 2>&1; then
-          echo "📦 Installing envsubst (gettext-base)..."
-          export DEBIAN_FRONTEND=noninteractive
-          sudo apt-get update -y
-          sudo apt-get install -y gettext-base
-        fi
-
-        # Initial HTTP-only config to satisfy HTTP-01 challenge and serve apps
-        cat <<'NGINX_HTTP' | envsubst '${API_SERVER_NAME} ${GRAFANA_SERVER_NAME} ${PROMETHEUS_SERVER_NAME}' | sudo tee /opt/asset-tagging/nginx/conf.d/default.conf > /dev/null
-        server {
-          listen 80;
-          server_name ${API_SERVER_NAME};
-
-          location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
-
-          location / {
-            # CORS for API
-            if ($request_method = OPTIONS) { return 204; }
-            add_header Access-Control-Allow-Origin "*" always;
-            add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-            add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
-            add_header Access-Control-Max-Age "86400" always;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_pass http://asset-tagging-app:5000;
-          }
-
-          location = /health { proxy_pass http://asset-tagging-app:5000/health; }
-        }
-
-        server {
-          listen 80;
-          server_name ${GRAFANA_SERVER_NAME};
-          location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
-          location / { proxy_pass http://grafana:3000; }
-        }
-
-        server {
-          listen 80;
-          server_name ${PROMETHEUS_SERVER_NAME};
-          location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
-          location / { proxy_pass http://prometheus:9090; }
-        }
-        NGINX_HTTP
- 
-        # Create override atomically with sudo, expanding variables safely
-        # Before writing override, load DB env from existing .env if present
-        if sudo test -f /opt/asset-tagging/.env; then
-          if [ -r /opt/asset-tagging/.env ]; then
-            set -a; . /opt/asset-tagging/.env; set +a
-          else
-            while IFS= read -r line; do
-              case "$line" in ""|\#*) continue ;; *=*) key="${line%%=*}"; val="${line#*=}"; export "$key=$val" ;; esac
-            done < <(sudo cat /opt/asset-tagging/.env)
-          fi
-        fi
-        : "${DB_HOST:=${RDS_ENDPOINT:-}}"
-        : "${DB_USER:=${DATABASE_USER:-${MYSQL_USER:-admin}}}"
-        : "${DB_PASS:=${DATABASE_PASSWORD:-${MYSQL_PASSWORD:-}}}"
-        : "${DB_NAME:=${DATABASE_NAME:-${MYSQL_DATABASE:-}}}"
-        : "${DB_PORT:=3306}"
-        # Map to app-expected env names
-        HOST="${DB_HOST}"
-        USERNAME="${DB_USER}"
-        PASSWORD="${DB_PASS}"
-        DB="${DB_NAME}"
-        PORT="5000"
-        export DB_HOST DB_USER DB_PASS DB_NAME DB_PORT HOST USERNAME PASSWORD DB PORT JWT_SECRET
-
-        # Write env file for the app to avoid YAML indentation issues
-        sudo bash -c "printf '%s\n' \
-          HOST=${HOST} \
-          USERNAME=${USERNAME} \
-          PASSWORD=${PASSWORD} \
-          DB=${DB} \
-          PORT=${PORT} \
-          JWT_SECRET=${JWT_SECRET} \
-          > /opt/asset-tagging/.env.app"
-        echo "--- .env.app (masked) ---"
-        sudo sed -E 's/^PASSWORD=.*/PASSWORD=*** (masked)/; s/^JWT_SECRET=.*/JWT_SECRET=*** (masked)/' /opt/asset-tagging/.env.app | sed -n '1,120p'
- 
-        cat <<'DOCKER_OVR' | envsubst '${FULL_IMAGE} ${GRAFANA_IMAGE}' | sudo tee docker-compose.override.yml > /dev/null
+        # Minimal compose file (app only). Expects /opt/asset-tagging/.env to exist
+        cat > docker-compose.yml << 'YML'
         services:
           app:
-            image: ${FULL_IMAGE}
+            image: ${IMAGE}
+            restart: unless-stopped
             env_file:
-              - .env.app
-          grafana:
-            image: ${GRAFANA_IMAGE}
-          prometheus:
-            image: quay.io/prometheus/prometheus:latest
-          nginx:
-            image: public.ecr.aws/docker/library/nginx:alpine
-            volumes:
-              - ./nginx/conf.d:/etc/nginx/conf.d:ro
-              - ./nginx/certbot:/var/www/certbot:ro
-              - ./nginx/letsencrypt:/etc/letsencrypt:ro
+              - .env
             ports:
-              - "80:80"
-              - "443:443"
-        DOCKER_OVR
-        echo "--- docker-compose.override.yml ---"
-        sudo sed -n '1,120p' docker-compose.override.yml || true
- 
-        # Start services (this will pull other images as needed)
-        echo "🚀 Starting services..."
-        echo "🛑 Ensuring host port 80 is free..."
-        sudo systemctl stop nginx 2>/dev/null || true
-        sudo systemctl disable nginx 2>/dev/null || true
-        sudo pkill -f nginx 2>/dev/null || true
-        sudo fuser -k 80/tcp 2>/dev/null || true
-        sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml up -d --remove-orphans
- 
-        # Quick diagnostics after start
-        echo "🔎 Post-start container status:"
-        sudo ${DC} -f docker-compose.yml -f docker-compose.override.yml ps || true
-        sudo docker ps || true
-        NGINX_CID=$(sudo docker ps --filter name=asset-tagging-nginx --format '{{.ID}}' | head -n1)
-        APP_CID=$(sudo docker ps --filter name=asset-tagging-app --format '{{.ID}}' | head -n1)
-        if [ -n "$NGINX_CID" ]; then
-          echo "--- Last 60 lines of nginx logs ---"
-          sudo docker logs --tail 60 "$NGINX_CID" || true
-        else
-          echo "⚠️ nginx container not found or not running"
+              - "5000:5000"
+        YML
+
+        echo "==> Login and pull image"
+        if ! command -v aws >/dev/null 2>&1; then
+          echo "Installing AWS CLI..."
+          cd /tmp && curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip && unzip -q awscliv2.zip && sudo ./aws/install --update && rm -rf aws awscliv2.zip && cd -
         fi
-        if [ -n "$APP_CID" ]; then
-          echo "--- Last 60 lines of app logs ---"
-          sudo docker logs --tail 60 "$APP_CID" || true
-        else
-          echo "⚠️ app container not found or not running"
-        fi
+        aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin "$ECR_REGISTRY"
+        sudo docker pull "$IMAGE" || true
 
-        # Obtain/renew SSL certificates using certbot (webroot)
-        if [ -n "${LE_EMAIL}" ]; then
-          # Issue certs once if not present; otherwise rely on systemd timer to renew
-          if ! sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${API_SERVER_NAME}" || \
-             ! sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${GRAFANA_SERVER_NAME}" || \
-             ! sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${PROMETHEUS_SERVER_NAME}"; then
-            echo "🔐 Obtaining Let's Encrypt certificates for ${API_SERVER_NAME}, ${GRAFANA_SERVER_NAME}, ${PROMETHEUS_SERVER_NAME} (first-time issuance)"
-            sudo docker run --rm \
-              -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt \
-              -v /opt/asset-tagging/nginx/certbot:/var/www/certbot \
-              certbot/certbot certonly --non-interactive --agree-tos --email "${LE_EMAIL}" \
-              --webroot -w /var/www/certbot \
-              -d "${API_SERVER_NAME}" -d "${GRAFANA_SERVER_NAME}" -d "${PROMETHEUS_SERVER_NAME}" || true
-          else
-            echo "🔁 Certificates already exist; skipping issuance (will be renewed by systemd timer)"
-          fi
+        echo "==> Restarting app"
+        sudo $DC up -d --remove-orphans
 
-          # If certs exist, switch to HTTPS config and reload
-          if sudo test -d "/opt/asset-tagging/nginx/letsencrypt/live/${API_SERVER_NAME}"; then
-            echo "🔁 Enabling HTTPS configuration..."
-            cat <<'NGINX_HTTPS' | envsubst '${API_SERVER_NAME} ${GRAFANA_SERVER_NAME} ${PROMETHEUS_SERVER_NAME}' | sudo tee /opt/asset-tagging/nginx/conf.d/default.conf > /dev/null
-            server {
-              listen 80;
-              server_name ${API_SERVER_NAME};
-              location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
-              return 301 https://$host$request_uri;
-            }
-            server {
-              listen 443 ssl;
-              server_name ${API_SERVER_NAME};
-              ssl_certificate /etc/letsencrypt/live/${API_SERVER_NAME}/fullchain.pem;
-              ssl_certificate_key /etc/letsencrypt/live/${API_SERVER_NAME}/privkey.pem;
-              location / {
-                # CORS for API
-                if ($request_method = OPTIONS) { return 204; }
-                add_header Access-Control-Allow-Origin "*" always;
-                add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-                add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
-                add_header Access-Control-Max-Age "86400" always;
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_pass http://asset-tagging-app:5000;
-              }
-              location = /health { proxy_pass http://asset-tagging-app:5000/health; }
-            }
-
-            server { listen 80; server_name ${GRAFANA_SERVER_NAME}; location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; } return 301 https://$host$request_uri; }
-            server { listen 443 ssl; server_name ${GRAFANA_SERVER_NAME}; ssl_certificate /etc/letsencrypt/live/${GRAFANA_SERVER_NAME}/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/${GRAFANA_SERVER_NAME}/privkey.pem; location / { proxy_pass http://grafana:3000; } }
-
-            server { listen 80; server_name ${PROMETHEUS_SERVER_NAME}; location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; } return 301 https://$host$request_uri; }
-            server { listen 443 ssl; server_name ${PROMETHEUS_SERVER_NAME}; ssl_certificate /etc/letsencrypt/live/${PROMETHEUS_SERVER_NAME}/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/${PROMETHEUS_SERVER_NAME}/privkey.pem; location / { proxy_pass http://prometheus:9090; } }
-            NGINX_HTTPS
-            # Reload nginx
-            NGINX_CID=$(sudo docker ps --filter name=asset-tagging-nginx --format '{{.ID}}' | head -n1)
-            if [ -n "$NGINX_CID" ]; then sudo docker exec "$NGINX_CID" nginx -s reload || true; fi
-          else
-            echo "⚠️  SSL certificates not found; continuing with HTTP only"
-          fi
-
-          # Install systemd timer to renew certs daily and reload nginx on success
-          echo "🗓️  Installing certbot renew systemd timer"
-          # Helper script to reload nginx inside the container after renew
-          sudo bash -c "printf '%s\n' \
-            '#!/usr/bin/env bash' \
-            'set -e' \
-            'CID=$(docker ps --filter name=asset-tagging-nginx --format {{.ID}} | head -n1)' \
-            '[ -n "\\$CID" ] && docker exec "\\$CID" nginx -s reload || true' \
-            > /usr/local/bin/reload-nginx-after-renew.sh"
-          sudo chmod +x /usr/local/bin/reload-nginx-after-renew.sh
-          sudo bash -c "printf '%s\n' \
-            '[Unit]' \
-            'Description=Renew Lets Encrypt certificates (dockerized certbot)' \
-            '' \
-            '[Service]' \
-            'Type=oneshot' \
-            'ExecStart=/usr/bin/docker run --rm -v /opt/asset-tagging/nginx/letsencrypt:/etc/letsencrypt -v /opt/asset-tagging/nginx/certbot:/var/www/certbot certbot/certbot renew --quiet --webroot -w /var/www/certbot' \
-            'ExecStartPost=/usr/local/bin/reload-nginx-after-renew.sh' \
-            > /etc/systemd/system/certbot-renew.service"
-          sudo bash -c "printf '%s\n' \
-            '[Unit]' \
-            'Description=Daily certbot renew timer' \
-            '' \
-            '[Timer]' \
-            'OnCalendar=daily' \
-            'Persistent=true' \
-            '' \
-            '[Install]' \
-            'WantedBy=timers.target' \
-            > /etc/systemd/system/certbot-renew.timer"
-          sudo systemctl daemon-reload || true
-          sudo systemctl enable --now certbot-renew.timer || true
-        else
-          echo "ℹ️ Let's Encrypt email not provided; serving HTTP only"
-        fi
-        
-        echo "⏳ Waiting for services to be ready..."
+        echo "==> Health check"
         for i in {1..30}; do
-          if curl -fsS http://localhost:5000/health > /dev/null; then
-            echo "✅ Application deployed successfully! (direct app port)"
+          if curl -fsS http://localhost:5000/health >/dev/null; then
+            echo "App healthy"
             exit 0
           fi
-          if curl -fsS http://localhost/health > /dev/null; then
-            echo "✅ Application deployed successfully! (via nginx)"
-            exit 0
-          fi
-          echo "Attempt $i/30: service not ready yet, waiting 10s..."
-          sleep 10
+          echo "Attempt $i/30..."
+          sleep 5
         done
-        echo "❌ Application health check failed after retries! Dumping diagnostics..."
-        sudo ${DC} ps || true
-        sudo docker ps || true
-        APP_CID=$(sudo docker ps --filter name=asset-tagging-app --format '{{.ID}}' | head -n1)
-        if [ -n "$APP_CID" ]; then
-          echo "--- Last 200 lines of app logs ---"
-          sudo docker logs --tail 200 "$APP_CID" || true
-        fi
+        echo "App failed to become healthy"
+        sudo $DC ps || true
+        sudo docker logs --tail 200 $(sudo docker ps --filter name=app --format '{{.ID}}' | head -n1) || true
         exit 1
         EOF
-        # Normalize heredoc terminators to start at column 0 inside the script
-        sed -i -E 's/^[[:space:]]*(NGINX_HTTP|NGINX_HTTPS|DOCKER_OVR)$/\1/' deploy-to-server.sh
-        
-    - name: 🚀 Deploy to EC2
-      run: |
-        chmod +x deploy-to-server.sh
-        : "${SSH_USER:=ubuntu}"
-        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-to-server.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
-        # Pass AWS credentials and Docker Hub credentials to EC2 for authentication
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "export AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' AWS_DEFAULT_REGION='${{ env.AWS_REGION }}' DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME || '' }}' DOCKERHUB_PASSWORD='${{ secrets.DOCKERHUB_PASSWORD || '' }}' ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}' API_SERVER_NAME='${{ inputs.api_server_name != '' && inputs.api_server_name || secrets.API_SERVER_NAME || 'api.moowigroup.com' }}' GRAFANA_SERVER_NAME='${{ inputs.grafana_server_name != '' && inputs.grafana_server_name || secrets.GRAFANA_SERVER_NAME || 'graf.moowigroup.com' }}' PROMETHEUS_SERVER_NAME='${{ inputs.prometheus_server_name != '' && inputs.prometheus_server_name || secrets.PROMETHEUS_SERVER_NAME || 'prom.moowigroup.com' }}' LE_EMAIL='${{ inputs.letsencrypt_email || secrets.LETSENCRYPT_EMAIL || '' }}' DB_HOST='${{ inputs.rds_endpoint != '' && inputs.rds_endpoint || secrets.RDS_ENDPOINT || '' }}' DB_USER='${{ inputs.db_user != '' && inputs.db_user || secrets.DB_USER || 'admin' }}' DB_PASSWORD='${{ secrets.DB_PASSWORD || '' }}' DB_NAME='${{ inputs.db_name != '' && inputs.db_name || secrets.DB_NAME || '' }}' DB_PORT='3306' JWT_SECRET='${{ secrets.JWT_SECRET || '' }}'; bash deploy-to-server.sh"
 
-  # Run database migrations
-  database-migration:
-    name: 🗄️ Database Migration
-    needs: deploy-application
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
-    env:
-      EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
-      RDS_ENDPOINT: ${{ inputs.rds_endpoint != '' && inputs.rds_endpoint || secrets.RDS_ENDPOINT }}
-      DB_NAME: ${{ inputs.db_name != '' && inputs.db_name || secrets.DB_NAME }}
-      DB_USER: ${{ inputs.db_user != '' && inputs.db_user || secrets.DB_USER || 'admin' }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-      SSH_USER: ${{ secrets.EC2_SSH_USER }}
-    
-    steps:
-    - name: 📥 Checkout backend repo
-      uses: actions/checkout@v4
+    - name: Deploy to EC2
+      run: |
+        chmod +x deploy-simple.sh
+        : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-simple.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}' bash ~/deploy-simple.sh"
 
-    - name: 📥 Checkout infrastructure repo
-      uses: actions/checkout@v4
-      with:
-        repository: ${{ env.INFRASTRUCTURE_REPO }}
-        token: ${{ secrets.GH_PAT || github.token }}
-        path: infrastructure
-        ref: main
-        
-    - name: 🔐 Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: 🔎 Discover RDS endpoint (fallback)
+    - name: Optional migration (if sql_path provided)
+      if: inputs.sql_path != ''
       run: |
-        if [ -z "${{ env.RDS_ENDPOINT }}" ] || [ "${{ env.RDS_ENDPOINT }}" = "None" ]; then
-          EP=$(aws rds describe-db-instances --region $AWS_REGION --db-instance-identifier asset-tagging-db --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || echo "")
-          if [ -n "$EP" ] && [ "$EP" != "None" ]; then
-            echo "RDS_ENDPOINT=$EP" >> $GITHUB_ENV
-            echo "Discovered RDS endpoint: $EP"
-          else
-            echo "RDS endpoint not provided and could not be discovered. Set secrets.RDS_ENDPOINT or provide workflow input."; exit 1
-          fi
-        else
-          echo "RDS_ENDPOINT=${{ env.RDS_ENDPOINT }}" >> $GITHUB_ENV
-        fi
-        
-    - name: 🔑 Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY secret is required and not set."; exit 1; fi
-        printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa || true
-        if ! grep -q "BEGIN .*PRIVATE KEY" ~/.ssh/id_rsa; then
-          printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa 2>/dev/null || true
-        fi
-        chmod 600 ~/.ssh/id_rsa
-        if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-          echo "Invalid SSH private key in secrets (format or passphrase). Ensure it is an unencrypted PEM/OpenSSH key with correct newlines.";
-          exit 1
-        fi
-        : "${SSH_USER:=ubuntu}"
-        if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
-        ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
-        
-    - name: 📤 Upload SQL to EC2
-      run: |
-        : "${SSH_USER:=ubuntu}"
-        SQL_SRC="${{ inputs.sql_path }}"
-        if [ -z "$SQL_SRC" ]; then
-          SQL_SRC="migrations/migration.sql"
-        fi
-        if [ ! -s "$SQL_SRC" ]; then
-          SQL_SRC="asset.sql"
-        fi
-        if [ ! -s "$SQL_SRC" ]; then
-          SQL_SRC="asset_management.sql"
-        fi
-        if [ ! -s "$SQL_SRC" ]; then
-          echo "❌ No SQL migration file found. Provide one via inputs.sql_path or include migrations/migration.sql or asset.sql / asset_management.sql at repo root."; exit 1
-        fi
-        echo "Using SQL file: $SQL_SRC"
-        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa "$SQL_SRC" ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
-        
-    - name: 📋 Create migration script
-      run: |
-        cat > run-migration.sh << 'EOF'
-        #!/bin/bash
+        : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa "${{ inputs.sql_path }}" ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "bash -s" << 'EOS'
         set -e
-        
-        echo "🗄️ Running database migration..."
-        
-        # Load env from app if present (use sudo if not readable)
-        if sudo test -f /opt/asset-tagging/.env; then
-          if [ -r /opt/asset-tagging/.env ]; then
-            set -a
-            . /opt/asset-tagging/.env
-            set +a
-          else
-            # Read via sudo and export lines of the form KEY=VALUE, ignore comments/blanks
-            while IFS= read -r line; do
-              case "$line" in
-                ""|\#*) continue ;;
-                *=*)
-                  key="${line%%=*}"
-                  val="${line#*=}"
-                  export "$key=$val"
-                ;;
-              esac
-            done < <(sudo cat /opt/asset-tagging/.env)
-          fi
+        # Load env from /opt/asset-tagging/.env (expects HOST/USERNAME/PASSWORD/DB)
+        if [ -f /opt/asset-tagging/.env ]; then
+          set -a; . /opt/asset-tagging/.env; set +a
+        else
+          echo "/opt/asset-tagging/.env not found on EC2"; exit 1
         fi
- 
-        # Prefer existing env on EC2; fallback to workflow-provided values
-        DB_HOST="${DB_HOST:-${{ env.RDS_ENDPOINT }}}"
-        DB_USER="${DB_USER:-${{ env.DB_USER }}}"
-        DB_PASS="${DB_PASSWORD:-${{ env.DB_PASSWORD }}}"
-        DB_NAME="${DB_NAME:-${{ env.DB_NAME }}}"
-        DB_PORT="${DB_PORT:-3306}"
- 
-        # Compatibility mappings from common var names
-        if [ -z "$DB_HOST" ]; then DB_HOST="${DATABASE_HOST:-${MYSQL_HOST:-}}"; fi
-        if [ -z "$DB_USER" ]; then DB_USER="${DATABASE_USER:-${MYSQL_USER:-}}"; fi
-        if [ -z "$DB_PASS" ]; then DB_PASS="${DATABASE_PASSWORD:-${MYSQL_PASSWORD:-}}"; fi
-        if [ -z "$DB_NAME" ]; then DB_NAME="${DATABASE_NAME:-${MYSQL_DATABASE:-}}"; fi
-        if [ -z "$DB_PORT" ] || ! echo "$DB_PORT" | grep -Eq '^[0-9]+$'; then DB_PORT=3306; fi
-        SQL_FILE="$HOME/migration.sql"
-        
-        if [ -z "$DB_NAME" ]; then
-          echo "❌ DB_NAME is not set. Provide workflow input db_name or set secrets.DB_NAME."; exit 1
-        fi
- 
-        if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "None" ]; then
-          echo "❌ RDS endpoint is missing. Aborting."; exit 1
-        fi
-        echo "🔎 Connecting to DB host=$DB_HOST port=$DB_PORT db=$DB_NAME user=$DB_USER"
-        
-        # Wait for database to be ready
-        for i in {1..10}; do
-          if mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" -e "SELECT 1;" > /dev/null 2>&1; then
-            echo "✅ Database connection successful!"
-            break
-          else
-            echo "⏳ Attempt $i: Database not ready yet, waiting..."
-            sleep 30
-          fi
-        done
-        
-        # Ensure mysql client is installed (non-interactive)
-        export DEBIAN_FRONTEND=noninteractive
         if ! command -v mysql >/dev/null 2>&1; then
-          sudo apt-get update -y
-          sudo apt-get install -y mysql-client
+          sudo apt-get update -y && sudo apt-get install -y mysql-client
         fi
-        
-        # Run SQL migration directly against RDS
-        if [ -f "$SQL_FILE" ]; then
-          echo "📥 Importing SQL into RDS..."
-          mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" --database="$DB_NAME" < "$SQL_FILE"
-        echo "✅ Database migration completed!"
-        else
-          echo "❌ SQL file not found at ~/migration.sql"; exit 1
-        fi
-        
-        EOF
-        
-    - name: 🗄️ Run migration on EC2
-      run: |
-        chmod +x run-migration.sh
-        : "${SSH_USER:=ubuntu}"
-        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa run-migration.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "bash run-migration.sh"
-
-  # Health check and monitoring
-  health-check:
-    name: 🏥 Health Check
-    needs: database-migration
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.deploy_only != true)
-    env:
-      EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
-      LOAD_BALANCER_DNS: ${{ secrets.LOAD_BALANCER_DNS }}
-      SSH_USER: ${{ secrets.EC2_SSH_USER }}
-    
-    steps:
-    - name: 🔐 Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: 🔑 Setup SSH
-      run: |
-        set -e
-        mkdir -p ~/.ssh
-        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY secret is required and not set."; exit 1; fi
-        # Write key, handling both literal newlines and \n-escaped forms and CRLF
-        rm -f ~/.ssh/id_rsa
-        printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa || true
-        # If it still doesn't look like a key, try base64 decoding
-        if ! grep -q "BEGIN .*PRIVATE KEY" ~/.ssh/id_rsa; then
-          echo "Key does not appear to be raw PEM/OpenSSH. Trying base64 decode..."
-          printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa 2>/dev/null || true
-        fi
-        chmod 600 ~/.ssh/id_rsa
-        # Validate that the key can be loaded and is not passphrase-protected
-        if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-          echo "Invalid SSH private key in secrets (format or passphrase). Ensure it is an unencrypted PEM/OpenSSH key with correct newlines.";
-          exit 1
-        fi
-        : "${SSH_USER:=ubuntu}"
-        if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP is not set. Configure the EC2_PUBLIC_IP secret."; exit 1; fi
-        ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
-        
-    - name: 🏥 Run health checks
-      run: |
-        : "${SSH_USER:=ubuntu}"
-        # Test application health with retries and nginx fallback
-        for i in {1..30}; do
-          if ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost:5000/health > /dev/null"; then
-            echo "✅ App healthy on :5000"
-            break
-          fi
-          if ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost/health > /dev/null"; then
-            echo "✅ App healthy via nginx"
-            break
-          fi
-          echo "Attempt $i/30: app not ready, waiting 10s..."
-          sleep 10
-        done
-        
-        # After retries, verify one more time or dump diagnostics
-        if ! ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost:5000/health > /dev/null" && \
-           ! ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -fsS http://localhost/health > /dev/null"; then
-          echo "❌ App health check failed after retries. Dumping diagnostics..."
-          ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "sudo docker ps && sudo docker compose -f /opt/asset-tagging/docker-compose.yml ps && sudo docker logs --tail 200 \$(sudo docker ps --filter name=asset-tagging-app --format '{{.ID}}' | head -n1) || true"
-          exit 1
-        fi
-        
-        # Test Grafana
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:3000" || echo "⚠️ Grafana not responding"
-        
-        # Test Prometheus
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "curl -f http://localhost:9090" || echo "⚠️ Prometheus not responding"
-        
-        # Test load balancer (only if DNS provided)
-        if [ -n "${{ env.LOAD_BALANCER_DNS }}" ]; then
-          curl -f "http://${{ env.LOAD_BALANCER_DNS }}/health" || echo "⚠️ Load balancer not responding"
-        else
-          echo "ℹ️ Skipping load balancer check: LOAD_BALANCER_DNS not set"
-        fi
-        
-    - name: 📊 Check container status
-      run: |
-        : "${SSH_USER:=ubuntu}"
-        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "sudo docker ps"
-        
-    - name: 📝 Deployment Summary
-      run: |
-        echo "🎉 Deployment completed successfully!"
-        echo "🌐 Application URL: http://${{ env.LOAD_BALANCER_DNS }}"
-        echo "📊 Grafana URL: http://${{ env.EC2_PUBLIC_IP }}:3000"
-        echo "📈 Prometheus URL: http://${{ env.EC2_PUBLIC_IP }}:9090"
-        echo "🗄️ Database: ${{ env.RDS_ENDPOINT }}"
-
-  # Notify on completion
-  notify:
-    name: 📢 Notify
-    needs: [health-check]
-    runs-on: ubuntu-latest
-    if: always() && github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: 📧 Send notification
-      run: |
-        if [ "${{ needs.health-check.result }}" == "success" ]; then
-          echo "✅ Deployment successful!"
-          # Add your notification logic here (Slack, email, etc.)
-        else
-          echo "❌ Deployment failed!"
-          # Add your notification logic here
-        fi 
+        echo "Running migration against $HOST/$DB as $USERNAME"
+        mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" < "$HOME/migration.sql"
+        echo "Migration complete"
+        EOS 
