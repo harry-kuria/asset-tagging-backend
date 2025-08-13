@@ -124,7 +124,7 @@ jobs:
         fi
 
         # Minimal compose file (app only). Expects /opt/asset-tagging/.env to exist
-        cat > docker-compose.yml << 'YML'
+        cat << 'YML' | sudo tee docker-compose.yml > /dev/null
         services:
           app:
             image: ${IMAGE}
