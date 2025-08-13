@@ -124,7 +124,7 @@ jobs:
         fi
 
         # Minimal compose file (app only). Expects /opt/asset-tagging/.env to exist
-        cat << 'YML' | sudo tee docker-compose.yml > /dev/null
+        cat << YML | sudo tee docker-compose.yml > /dev/null
         services:
           app:
             image: ${IMAGE}
@@ -144,7 +144,8 @@ jobs:
         sudo docker pull "$IMAGE" || true
 
         echo "==> Restarting app"
-        sudo $DC up -d --remove-orphans
+        # Use only the generated compose file (ignore any old overrides)
+        sudo $DC -f docker-compose.yml up -d --remove-orphans
 
         echo "==> Health check"
         for i in {1..30}; do
