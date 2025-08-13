@@ -26,7 +26,7 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
+      
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -42,7 +42,7 @@ jobs:
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
-
+      
     - name: Build and push image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -69,7 +69,7 @@ jobs:
     - name: Login to Amazon ECR (for registry value)
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
-
+      
     - name: Setup SSH
       run: |
         set -e
@@ -91,7 +91,7 @@ jobs:
         : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
         if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP not set"; exit 1; fi
         ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
-
+        
     - name: Create simple deploy script
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -102,11 +102,11 @@ jobs:
         ECR_REGISTRY="${ECR_REGISTRY}"
         ECR_REPOSITORY="asset-tagging-backend"
         IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
-
+        
         echo "==> Preparing host"
         sudo mkdir -p /opt/asset-tagging
         cd /opt/asset-tagging
-
+        
         # Ensure docker compose plugin
         if docker compose version >/dev/null 2>&1; then
           DC="docker compose"
@@ -122,8 +122,9 @@ jobs:
           sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           DC="docker compose"
         fi
-
-        # Minimal compose file (app only). Expects /opt/asset-tagging/.env to exist
+        
+        # Minimal compose file (app + caddy). Expects /opt/asset-tagging/.env to exist
+        # Overwrite any previous compose file to avoid duplicate top-level keys
         cat << YML | sudo tee docker-compose.yml > /dev/null
         services:
           app:
@@ -133,7 +134,30 @@ jobs:
               - .env
             ports:
               - "5000:5000"
+
+          caddy:
+            image: caddy:2
+            depends_on:
+              - app
+            ports:
+              - "80:80"
+              - "443:443"
+            volumes:
+              - ./Caddyfile:/etc/caddy/Caddyfile:ro
+              - caddy_data:/data
+              - caddy_config:/config
+
+        volumes:
+          caddy_data:
+          caddy_config:
         YML
+
+        # Write Caddyfile to proxy graf.moowigroup.com to app:5000
+        sudo tee Caddyfile > /dev/null <<'CF'
+        graf.moowigroup.com {
+          reverse_proxy app:5000
+        }
+        CF
 
         echo "==> Login and pull image"
         if ! command -v aws >/dev/null 2>&1; then
@@ -161,7 +185,7 @@ jobs:
         sudo docker logs --tail 200 $(sudo docker ps --filter name=app --format '{{.ID}}' | head -n1) || true
         exit 1
         EOF
-
+        
     - name: Deploy to EC2
       run: |
         chmod +x deploy-simple.sh
