@@ -67,6 +67,87 @@ func main() {
 		})
 	})
 
+	// Database test endpoint
+	r.GET("/api/db-test", func(c *gin.Context) {
+		// Check if database connection is available
+		if db == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Database connection not available",
+			})
+			return
+		}
+
+		// Test database connection
+		err := db.Ping()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Database connection failed: " + err.Error(),
+			})
+			return
+		}
+
+		// Check if assets table exists
+		var tableExists int
+		err = db.QueryRow("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'assets'").Scan(&tableExists)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to check table existence: " + err.Error(),
+			})
+			return
+		}
+
+		if tableExists == 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Assets table does not exist",
+			})
+			return
+		}
+
+		// Check table structure
+		rows, err := db.Query("DESCRIBE assets")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to describe table: " + err.Error(),
+			})
+			return
+		}
+		defer rows.Close()
+
+		var columns []gin.H
+		for rows.Next() {
+			var field, typ, null, key, defaultVal, extra sql.NullString
+			err := rows.Scan(&field, &typ, &null, &key, &defaultVal, &extra)
+			if err != nil {
+				continue
+			}
+			columns = append(columns, gin.H{
+				"field":   field.String,
+				"type":    typ.String,
+				"null":    null.String,
+				"key":     key.String,
+				"default": defaultVal.String,
+				"extra":   extra.String,
+			})
+		}
+
+		// Count total assets
+		var assetCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM assets").Scan(&assetCount)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to count assets: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":       "Database connected",
+			"table_exists": tableExists > 0,
+			"asset_count":  assetCount,
+			"columns":      columns,
+		})
+	})
+
 	// Public routes (no authentication required)
 	public := r.Group("/api")
 	{

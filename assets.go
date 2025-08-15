@@ -410,6 +410,27 @@ func getInstitutionsHandler(c *gin.Context) {
 		return
 	}
 
+	// Check if assets table exists
+	var tableExists int
+	err = db.QueryRow("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'assets'").Scan(&tableExists)
+	if err != nil {
+		log.Printf("Error checking table existence: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to check table existence",
+		})
+		return
+	}
+
+	if tableExists == 0 {
+		// Table doesn't exist, return empty array
+		c.JSON(http.StatusOK, APIResponse{
+			Success: true,
+			Data:    []string{},
+		})
+		return
+	}
+
 	rows, err := db.Query("SELECT DISTINCT institutionName FROM assets WHERE institutionName IS NOT NULL AND institutionName != ''")
 	if err != nil {
 		log.Printf("Error fetching institutions: %v", err)
@@ -468,6 +489,27 @@ func getDepartmentsHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
 			Error:   "Database connection failed",
+		})
+		return
+	}
+
+	// Check if assets table exists
+	var tableExists int
+	err = db.QueryRow("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'assets'").Scan(&tableExists)
+	if err != nil {
+		log.Printf("Error checking table existence: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to check table existence",
+		})
+		return
+	}
+
+	if tableExists == 0 {
+		// Table doesn't exist, return empty array
+		c.JSON(http.StatusOK, APIResponse{
+			Success: true,
+			Data:    []string{},
 		})
 		return
 	}
@@ -534,6 +576,27 @@ func getFunctionalAreasHandler(c *gin.Context) {
 		return
 	}
 
+	// Check if assets table exists
+	var tableExists int
+	err = db.QueryRow("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'assets'").Scan(&tableExists)
+	if err != nil {
+		log.Printf("Error checking table existence: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to check table existence",
+		})
+		return
+	}
+
+	if tableExists == 0 {
+		// Table doesn't exist, return empty array
+		c.JSON(http.StatusOK, APIResponse{
+			Success: true,
+			Data:    []string{},
+		})
+		return
+	}
+
 	rows, err := db.Query("SELECT DISTINCT functionalArea FROM assets WHERE functionalArea IS NOT NULL AND functionalArea != ''")
 	if err != nil {
 		log.Printf("Error fetching functional areas: %v", err)
@@ -592,6 +655,27 @@ func getManufacturersHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
 			Error:   "Database connection failed",
+		})
+		return
+	}
+
+	// Check if assets table exists
+	var tableExists int
+	err = db.QueryRow("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'assets'").Scan(&tableExists)
+	if err != nil {
+		log.Printf("Error checking table existence: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to check table existence",
+		})
+		return
+	}
+
+	if tableExists == 0 {
+		// Table doesn't exist, return empty array
+		c.JSON(http.StatusOK, APIResponse{
+			Success: true,
+			Data:    []string{},
 		})
 		return
 	}
