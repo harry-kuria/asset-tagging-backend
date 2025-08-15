@@ -180,6 +180,7 @@ func main() {
 		protected.GET("/assets", getAssetsHandler)
 		protected.GET("/assets/:id", getAssetDetailsHandler)
 		protected.POST("/assets", addAssetHandler)
+		protected.POST("/addAsset", addAssetHandler) // Legacy endpoint for frontend compatibility
 		protected.POST("/assets/multiple", addMultipleAssetsHandler)
 		protected.PUT("/assets/:id", updateAssetHandler)
 		protected.DELETE("/assets/:id", deleteAssetHandler)
