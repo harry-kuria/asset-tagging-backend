@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -27,7 +28,7 @@ func getCategoriesHandler(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var categories []AssetCategory
+	var categories []gin.H
 	for rows.Next() {
 		var cat AssetCategory
 		err := rows.Scan(
@@ -35,13 +36,42 @@ func getCategoriesHandler(c *gin.Context) {
 			&cat.Color, &cat.IsActive, &cat.CreatedAt, &cat.UpdatedAt,
 		)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, APIResponse{
-				Success: false,
-				Error:   "Failed to scan category: " + err.Error(),
-			})
-			return
+			log.Printf("Error scanning category: %v", err)
+			continue
 		}
-		categories = append(categories, cat)
+
+		// Handle NULL color values
+		color := "#007bff" // Default color
+		if cat.Color != nil {
+			color = *cat.Color
+		}
+
+		// Handle NULL description values
+		description := ""
+		if cat.Description != nil {
+			description = *cat.Description
+		}
+
+		categories = append(categories, gin.H{
+			"id":          cat.ID,
+			"company_id":  cat.CompanyID,
+			"name":        cat.Name,
+			"description": description,
+			"color":       color,
+			"is_active":   cat.IsActive,
+			"created_at":  cat.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updated_at":  cat.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating categories: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing categories",
+		})
+		return
 	}
 
 	c.JSON(http.StatusOK, APIResponse{

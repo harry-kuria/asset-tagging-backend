@@ -51,7 +51,7 @@ type AssetCategory struct {
 	CompanyID   int       `json:"company_id" db:"company_id"`
 	Name        string    `json:"name" db:"name"`
 	Description *string   `json:"description" db:"description"`
-	Color       string    `json:"color" db:"color"`
+	Color       *string   `json:"color" db:"color"`
 	IsActive    bool      `json:"is_active" db:"is_active"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
