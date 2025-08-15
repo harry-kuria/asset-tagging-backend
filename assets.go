@@ -390,12 +390,32 @@ func addMultipleAssetsHandler(c *gin.Context) {
 
 // getInstitutionsHandler returns all unique institutions
 func getInstitutionsHandler(c *gin.Context) {
-	rows, err := db.Query("SELECT DISTINCT institutionName FROM assets WHERE institutionName IS NOT NULL")
+	// Check if database connection is available
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection not available",
+		})
+		return
+	}
+
+	// Test database connection
+	err := db.Ping()
+	if err != nil {
+		log.Printf("Database ping failed: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection failed",
+		})
+		return
+	}
+
+	rows, err := db.Query("SELECT DISTINCT institutionName FROM assets WHERE institutionName IS NOT NULL AND institutionName != ''")
 	if err != nil {
 		log.Printf("Error fetching institutions: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Error:   "Internal Server Error",
+			Error:   "Failed to fetch institutions: " + err.Error(),
 		})
 		return
 	}
@@ -409,20 +429,55 @@ func getInstitutionsHandler(c *gin.Context) {
 			log.Printf("Error scanning institution: %v", err)
 			continue
 		}
-		institutions = append(institutions, institution)
+		if institution != "" {
+			institutions = append(institutions, institution)
+		}
 	}
 
-	c.JSON(http.StatusOK, institutions)
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating institutions: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing institutions",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    institutions,
+	})
 }
 
 // getDepartmentsHandler returns all unique departments
 func getDepartmentsHandler(c *gin.Context) {
-	rows, err := db.Query("SELECT DISTINCT department FROM assets WHERE department IS NOT NULL")
+	// Check if database connection is available
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection not available",
+		})
+		return
+	}
+
+	// Test database connection
+	err := db.Ping()
+	if err != nil {
+		log.Printf("Database ping failed: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection failed",
+		})
+		return
+	}
+
+	rows, err := db.Query("SELECT DISTINCT department FROM assets WHERE department IS NOT NULL AND department != ''")
 	if err != nil {
 		log.Printf("Error fetching departments: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Error:   "Internal Server Error",
+			Error:   "Failed to fetch departments: " + err.Error(),
 		})
 		return
 	}
@@ -436,20 +491,55 @@ func getDepartmentsHandler(c *gin.Context) {
 			log.Printf("Error scanning department: %v", err)
 			continue
 		}
-		departments = append(departments, department)
+		if department != "" {
+			departments = append(departments, department)
+		}
 	}
 
-	c.JSON(http.StatusOK, departments)
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating departments: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing departments",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    departments,
+	})
 }
 
 // getFunctionalAreasHandler returns all unique functional areas
 func getFunctionalAreasHandler(c *gin.Context) {
-	rows, err := db.Query("SELECT DISTINCT functionalArea FROM assets WHERE functionalArea IS NOT NULL")
+	// Check if database connection is available
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection not available",
+		})
+		return
+	}
+
+	// Test database connection
+	err := db.Ping()
+	if err != nil {
+		log.Printf("Database ping failed: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection failed",
+		})
+		return
+	}
+
+	rows, err := db.Query("SELECT DISTINCT functionalArea FROM assets WHERE functionalArea IS NOT NULL AND functionalArea != ''")
 	if err != nil {
 		log.Printf("Error fetching functional areas: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Error:   "Internal Server Error",
+			Error:   "Failed to fetch functional areas: " + err.Error(),
 		})
 		return
 	}
@@ -463,20 +553,55 @@ func getFunctionalAreasHandler(c *gin.Context) {
 			log.Printf("Error scanning functional area: %v", err)
 			continue
 		}
-		functionalAreas = append(functionalAreas, functionalArea)
+		if functionalArea != "" {
+			functionalAreas = append(functionalAreas, functionalArea)
+		}
 	}
 
-	c.JSON(http.StatusOK, functionalAreas)
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating functional areas: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing functional areas",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    functionalAreas,
+	})
 }
 
 // getManufacturersHandler returns all unique manufacturers
 func getManufacturersHandler(c *gin.Context) {
-	rows, err := db.Query("SELECT DISTINCT manufacturer FROM assets WHERE manufacturer IS NOT NULL")
+	// Check if database connection is available
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection not available",
+		})
+		return
+	}
+
+	// Test database connection
+	err := db.Ping()
+	if err != nil {
+		log.Printf("Database ping failed: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Database connection failed",
+		})
+		return
+	}
+
+	rows, err := db.Query("SELECT DISTINCT manufacturer FROM assets WHERE manufacturer IS NOT NULL AND manufacturer != ''")
 	if err != nil {
 		log.Printf("Error fetching manufacturers: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Error:   "Internal Server Error",
+			Error:   "Failed to fetch manufacturers: " + err.Error(),
 		})
 		return
 	}
@@ -490,8 +615,23 @@ func getManufacturersHandler(c *gin.Context) {
 			log.Printf("Error scanning manufacturer: %v", err)
 			continue
 		}
-		manufacturers = append(manufacturers, manufacturer)
+		if manufacturer != "" {
+			manufacturers = append(manufacturers, manufacturer)
+		}
 	}
 
-	c.JSON(http.StatusOK, manufacturers)
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating manufacturers: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing manufacturers",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    manufacturers,
+	})
 } 
