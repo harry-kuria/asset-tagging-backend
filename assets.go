@@ -442,7 +442,7 @@ func getInstitutionsHandler(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var institutions []string
+	var institutions []string = []string{}
 	for rows.Next() {
 		var institution string
 		err := rows.Scan(&institution)
@@ -525,7 +525,7 @@ func getDepartmentsHandler(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var departments []string
+	var departments []string = []string{}
 	for rows.Next() {
 		var department string
 		err := rows.Scan(&department)
@@ -608,7 +608,7 @@ func getFunctionalAreasHandler(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var functionalAreas []string
+	var functionalAreas []string = []string{}
 	for rows.Next() {
 		var functionalArea string
 		err := rows.Scan(&functionalArea)
@@ -691,7 +691,7 @@ func getManufacturersHandler(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var manufacturers []string
+	var manufacturers []string = []string{}
 	for rows.Next() {
 		var manufacturer string
 		err := rows.Scan(&manufacturer)

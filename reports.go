@@ -28,11 +28,11 @@ func generateReportHandler(c *gin.Context) {
 	functionalArea := c.Query("functionalArea")
 
 	// Build query dynamically
-	query := "SELECT id, assetName, assetType, institutionName, department, functionalArea, manufacturer, modelNumber, serialNumber, location, status, purchaseDate, purchasePrice, logo, createdAt, updatedAt FROM assets WHERE 1=1"
+	query := "SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, logo, created_at, updated_at FROM assets WHERE 1=1"
 	var args []interface{}
 
 	if assetType != "" && assetType != "All" {
-		query += " AND assetType = ?"
+		query += " AND asset_type = ?"
 		args = append(args, assetType)
 	}
 
@@ -47,12 +47,12 @@ func generateReportHandler(c *gin.Context) {
 	}
 
 	if startDate != "" {
-		query += " AND purchaseDate >= ?"
+		query += " AND purchase_date >= ?"
 		args = append(args, startDate)
 	}
 
 	if endDate != "" {
-		query += " AND purchaseDate <= ?"
+		query += " AND purchase_date <= ?"
 		args = append(args, endDate)
 	}
 
@@ -62,12 +62,12 @@ func generateReportHandler(c *gin.Context) {
 	}
 
 	if modelNumber != "" && modelNumber != "All" {
-		query += " AND modelNumber = ?"
+		query += " AND model_number = ?"
 		args = append(args, modelNumber)
 	}
 
 	if institutionName != "" && institutionName != "All" {
-		query += " AND institutionName = ?"
+		query += " AND institution_name = ?"
 		args = append(args, institutionName)
 	}
 
@@ -77,7 +77,7 @@ func generateReportHandler(c *gin.Context) {
 	}
 
 	if functionalArea != "" && functionalArea != "All" {
-		query += " AND functionalArea = ?"
+		query += " AND functional_area = ?"
 		args = append(args, functionalArea)
 	}
 

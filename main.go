@@ -197,6 +197,7 @@ func main() {
 
 		// Reports
 		protected.POST("/reports", generateReportHandler)
+		protected.GET("/generateReport", generateReportHandler) // Legacy GET endpoint
 		protected.POST("/reports/assets", generateAssetReportHandler)
 		protected.POST("/reports/invoice", generateInvoiceHandler)
 		protected.GET("/reports/download/:filename", downloadHandler)
