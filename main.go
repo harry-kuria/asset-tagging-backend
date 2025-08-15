@@ -165,6 +165,9 @@ func main() {
 	// Backward-compatible alias (legacy clients hitting /create-account)
 	r.POST("/create-account", registerCompanyHandler)
 
+	// Legacy endpoints (public access for frontend compatibility)
+	r.POST("/addAsset", addAssetHandler) // Legacy endpoint for frontend compatibility
+
 	// Protected routes (authentication required)
 	protected := r.Group("/api")
 	protected.Use(authMiddleware())
@@ -180,7 +183,6 @@ func main() {
 		protected.GET("/assets", getAssetsHandler)
 		protected.GET("/assets/:id", getAssetDetailsHandler)
 		protected.POST("/assets", addAssetHandler)
-		protected.POST("/addAsset", addAssetHandler) // Legacy endpoint for frontend compatibility
 		protected.POST("/assets/multiple", addMultipleAssetsHandler)
 		protected.PUT("/assets/:id", updateAssetHandler)
 		protected.DELETE("/assets/:id", deleteAssetHandler)
