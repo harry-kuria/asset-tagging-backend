@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -151,6 +153,19 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
+	// Fetch roles for this user
+	roleRows, err := db.Query(`SELECT role FROM user_roles WHERE user_id = ? AND company_id = ?`, user.ID, user.CompanyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{ Success: false, Error: "Failed to load user roles" })
+		return
+	}
+	defer roleRows.Close()
+	var roles []string
+	for roleRows.Next() {
+		var r string
+		if err := roleRows.Scan(&r); err == nil { roles = append(roles, r) }
+	}
+
 	// Return login response
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
@@ -160,14 +175,43 @@ func loginHandler(c *gin.Context) {
 			User:      user,
 			Company:   company,
 			ExpiresAt: expirationTime.Unix(),
+			Roles:     roles,
 		},
 	})
 }
 
 // registerCompanyHandler handles company registration with admin user
 func registerCompanyHandler(c *gin.Context) {
+	// Read body once so we can validate types explicitly then bind into struct
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{ Success: false, Error: "Unable to read request body" })
+		return
+	}
+	// Restore body for downstream readers if needed (not strictly necessary since we unmarshal below)
+	// Validate that admin_user.password is a string
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{ Success: false, Error: "Invalid JSON: " + err.Error() })
+		return
+	}
+	adminRaw, ok := raw["admin_user"].(map[string]interface{})
+	if !ok {
+		c.JSON(http.StatusBadRequest, APIResponse{ Success: false, Error: "admin_user is required and must be an object" })
+		return
+	}
+	pwVal, exists := adminRaw["password"]
+	if !exists {
+		c.JSON(http.StatusBadRequest, APIResponse{ Success: false, Error: "admin_user.password is required" })
+		return
+	}
+	if _, ok := pwVal.(string); !ok {
+		c.JSON(http.StatusBadRequest, APIResponse{ Success: false, Error: "admin_user.password must be a string" })
+		return
+	}
+
 	var req RegisterCompanyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
 			Success: false,
 			Error:   "Invalid request data: " + err.Error(),
@@ -188,7 +232,7 @@ func registerCompanyHandler(c *gin.Context) {
 
 	// Ensure unique company_code; auto-generate if missing
 	var existingID int
-	if req.CompanyCode == "" { 
+	if req.CompanyCode == "" {
 		// generate code from company name
 		base := ""
 		if len(req.CompanyName) >= 3 { base = req.CompanyName[:3] } else { base = req.CompanyName }
@@ -466,4 +510,12 @@ func getCurrentCompanyID(c *gin.Context) int {
 		return id
 	}
 	return 0
+} 
+
+// logoutHandler acknowledges logout (JWT is stateless; clients should discard the token)
+func logoutHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Message: "Logged out",
+	})
 } 

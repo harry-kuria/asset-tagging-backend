@@ -72,6 +72,13 @@ func main() {
 	{
 		public.POST("/login", loginHandler)
 		public.POST("/register/company", registerCompanyHandler)
+		
+		// Reference data (public access)
+		public.GET("/categories", getCategoriesHandler)
+		public.GET("/institutions", getInstitutionsHandler)
+		public.GET("/departments", getDepartmentsHandler)
+		public.GET("/functional-areas", getFunctionalAreasHandler)
+		public.GET("/manufacturers", getManufacturersHandler)
 	}
 
 	// Backward-compatible alias (legacy clients hitting /create-account)
@@ -97,17 +104,10 @@ func main() {
 		protected.DELETE("/assets/:id", deleteAssetHandler)
 		protected.POST("/assets/search", searchAssetsHandler)
 
-		// Asset categories
-		protected.GET("/categories", getCategoriesHandler)
+		// Asset categories (protected - for management)
 		protected.POST("/categories", addCategoryHandler)
 		protected.PUT("/categories/:id", updateCategoryHandler)
 		protected.DELETE("/categories/:id", deleteCategoryHandler)
-
-		// Reference data
-		protected.GET("/institutions", getInstitutionsHandler)
-		protected.GET("/departments", getDepartmentsHandler)
-		protected.GET("/functional-areas", getFunctionalAreasHandler)
-		protected.GET("/manufacturers", getManufacturersHandler)
 
 		// Barcode generation
 		protected.POST("/barcodes", generateBarcodesHandler)
@@ -122,6 +122,9 @@ func main() {
 
 		// Dashboard
 		protected.GET("/dashboard/stats", getDashboardStatsHandler)
+
+		// Auth
+		protected.POST("/logout", logoutHandler)
 	}
 
 	// Start server

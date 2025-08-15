@@ -301,10 +301,11 @@ type UpdateCategoryRequest struct {
 
 // LoginResponse represents login response
 type LoginResponse struct {
-	Token     string `json:"token"`
-	User      User   `json:"user"`
+	Token     string  `json:"token"`
+	User      User    `json:"user"`
 	Company   Company `json:"company"`
-	ExpiresAt int64  `json:"expires_at"`
+	ExpiresAt int64   `json:"expires_at"`
+	Roles     []string `json:"roles"`
 }
 
 // APIResponse represents generic API response
