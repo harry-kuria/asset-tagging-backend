@@ -431,7 +431,7 @@ func getInstitutionsHandler(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query("SELECT DISTINCT institutionName FROM assets WHERE institutionName IS NOT NULL AND institutionName != ''")
+	rows, err := db.Query("SELECT DISTINCT institution_name FROM assets WHERE institution_name IS NOT NULL AND institution_name != ''")
 	if err != nil {
 		log.Printf("Error fetching institutions: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -597,7 +597,7 @@ func getFunctionalAreasHandler(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query("SELECT DISTINCT functionalArea FROM assets WHERE functionalArea IS NOT NULL AND functionalArea != ''")
+	rows, err := db.Query("SELECT DISTINCT functional_area FROM assets WHERE functional_area IS NOT NULL AND functional_area != ''")
 	if err != nil {
 		log.Printf("Error fetching functional areas: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
