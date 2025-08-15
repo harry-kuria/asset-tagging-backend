@@ -1,0 +1,186 @@
+name: Deploy Backend (Simple)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      ec2_public_ip:
+        description: 'EC2 public IP (overrides secret if provided)'
+        required: false
+        type: string
+        default: ''
+      sql_path:
+        description: 'Optional SQL file path to run as migration'
+        required: false
+        type: string
+        default: ''
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: asset-tagging-backend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Ensure ECR repo exists
+      run: |
+        aws ecr describe-repositories --repository-names $ECR_REPOSITORY >/dev/null 2>&1 || \
+        aws ecr create-repository --repository-name $ECR_REPOSITORY --image-tag-mutability MUTABLE
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Build and push image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:latest" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Login to Amazon ECR (for registry value)
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Setup SSH
+      run: |
+        set -e
+        mkdir -p ~/.ssh
+        if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY not set"; exit 1; fi
+        rm -f ~/.ssh/id_rsa
+        printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa || true
+        if ! grep -Eq "BEGIN (OPENSSH|RSA|EC|DSA) PRIVATE KEY" ~/.ssh/id_rsa; then
+          printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa 2>/dev/null || true
+        fi
+        chmod 600 ~/.ssh/id_rsa
+        if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
+          echo "Invalid or encrypted SSH private key in EC2_SSH_PRIVATE_KEY secret. Ensure it's an unencrypted PEM/OpenSSH key with correct newlines or provide raw/base64 content.";
+          exit 1
+        fi
+        : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
+        if [ -z "${{ env.EC2_PUBLIC_IP }}" ]; then echo "EC2_PUBLIC_IP not set"; exit 1; fi
+        ssh-keyscan -H "${{ env.EC2_PUBLIC_IP }}" >> ~/.ssh/known_hosts
+        
+    - name: Create simple deploy script
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        cat > deploy-simple.sh << 'SCRIPT_EOF'
+        #!/usr/bin/env bash
+        set -e
+        ECR_REGISTRY="${ECR_REGISTRY}"
+        ECR_REPOSITORY="asset-tagging-backend"
+        IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+        
+        echo "==> Preparing host"
+        sudo mkdir -p /opt/asset-tagging
+        cd /opt/asset-tagging
+        
+        if docker compose version >/dev/null 2>&1; then
+          DC="docker compose"
+        elif command -v docker-compose >/dev/null 2>&1; then
+          DC="docker-compose"
+        else
+          echo "Installing docker compose v2..."
+          sudo mkdir -p /usr/local/lib/docker/cli-plugins
+          ARCH=$(uname -m)
+          URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64"
+          [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ] && URL="https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-aarch64"
+          sudo curl -sSL "$URL" -o /usr/local/lib/docker/cli-plugins/docker-compose
+          sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          DC="docker compose"
+        fi
+        
+        cat << YML | sudo tee docker-compose.yml > /dev/null
+        services:
+          app:
+            image: ${IMAGE}
+            restart: unless-stopped
+            env_file:
+              - .env
+            ports:
+              - "5000:5000"
+
+          caddy:
+            image: caddy:2
+            depends_on:
+              - app
+            ports:
+              - "80:80"
+              - "443:443"
+            volumes:
+              - ./Caddyfile:/etc/caddy/Caddyfile:ro
+              - caddy_data:/data
+              - caddy_config:/config
+
+        volumes:
+          caddy_data:
+          caddy_config:
+        YML
+
+        sudo tee Caddyfile > /dev/null <<'CF'
+        graf.moowigroup.com {
+          reverse_proxy app:5000
+        }
+        CF
+
+        echo "==> Login and pull image"
+        if ! command -v aws >/dev/null 2>&1; then
+          echo "Installing AWS CLI..."
+          cd /tmp && curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip && unzip -q awscliv2.zip && sudo ./aws/install --update && rm -rf aws awscliv2.zip && cd -
+        fi
+        aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin "$ECR_REGISTRY"
+        sudo docker pull "$IMAGE" || true
+
+        echo "==> Restarting app"
+        sudo $DC -f docker-compose.yml up -d --remove-orphans
+
+        echo "==> Health check"
+        for i in {1..30}; do
+          if curl -fsS http://localhost:5000/health >/dev/null; then
+            echo "App healthy"
+            exit 0
+          fi
+          echo "Attempt $i/30..."
+          sleep 5
+        done
+        echo "App failed to become healthy"
+        sudo $DC ps || true
+        sudo docker logs --tail 200 $(sudo docker ps --filter name=app --format '{{.ID}}' | head -n1) || true
+        exit 1
+        SCRIPT_EOF
+        
+    - name: Deploy to EC2
+      run: |
+        chmod +x deploy-simple.sh
+        : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-simple.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}' bash ~/deploy-simple.sh"
