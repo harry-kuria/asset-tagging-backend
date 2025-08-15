@@ -27,9 +27,19 @@ func generateReportHandler(c *gin.Context) {
 	department := c.Query("department")
 	functionalArea := c.Query("functionalArea")
 
+	// Validate required parameters
+	if institutionName == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Institution name is required",
+		})
+		return
+	}
+
 	// Build query dynamically
-	query := "SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, logo, created_at, updated_at FROM assets WHERE 1=1"
+	query := "SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, logo, created_at, updated_at FROM assets WHERE institution_name = ?"
 	var args []interface{}
+	args = append(args, institutionName)
 
 	if assetType != "" && assetType != "All" {
 		query += " AND asset_type = ?"
@@ -66,11 +76,6 @@ func generateReportHandler(c *gin.Context) {
 		args = append(args, modelNumber)
 	}
 
-	if institutionName != "" && institutionName != "All" {
-		query += " AND institution_name = ?"
-		args = append(args, institutionName)
-	}
-
 	if department != "" && department != "All" {
 		query += " AND department = ?"
 		args = append(args, department)
@@ -80,6 +85,11 @@ func generateReportHandler(c *gin.Context) {
 		query += " AND functional_area = ?"
 		args = append(args, functionalArea)
 	}
+
+	// Add ordering
+	query += " ORDER BY asset_name"
+
+	log.Printf("Executing report query: %s with args: %v", query, args)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -112,6 +122,7 @@ func generateReportHandler(c *gin.Context) {
 			"institutionName": asset.InstitutionName,
 			"department":      asset.Department,
 			"functionalArea":  asset.FunctionalArea,
+			"marketValue":     asset.PurchasePrice, // Use purchase price as market value
 			"manufacturer":    asset.Manufacturer,
 			"modelNumber":     asset.ModelNumber,
 			"serialNumber":    asset.SerialNumber,
@@ -125,7 +136,17 @@ func generateReportHandler(c *gin.Context) {
 		})
 	}
 
-	log.Printf("Report data from the server: %d assets", len(assets))
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating assets: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing report data",
+		})
+		return
+	}
+
+	log.Printf("Report generated successfully: %d assets found", len(assets))
 	c.JSON(http.StatusOK, assets)
 }
 
@@ -409,4 +430,91 @@ func downloadHandler(c *gin.Context) {
 
 	// Serve the file
 	c.File(filename)
+}
+
+// fetchAssetsByInstitutionHandler fetches assets by institution for Excel reports
+func fetchAssetsByInstitutionHandler(c *gin.Context) {
+	var req InstitutionBarcodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Invalid request data: " + err.Error(),
+		})
+		return
+	}
+
+	// Build query with institution filter
+	query := `
+		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
+		manufacturer, model_number, serial_number, location, status, purchase_date, 
+		purchase_price, logo, created_at, updated_at 
+		FROM assets 
+		WHERE institution_name = ? AND institution_name IS NOT NULL
+		ORDER BY asset_name
+	`
+
+	rows, err := db.Query(query, req.Institution)
+	if err != nil {
+		log.Printf("Error fetching assets by institution: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to fetch assets: " + err.Error(),
+		})
+		return
+	}
+	defer rows.Close()
+
+	var assets []gin.H
+	for rows.Next() {
+		var asset Asset
+		err := rows.Scan(
+			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
+			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
+			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
+			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+		if err != nil {
+			log.Printf("Error scanning asset: %v", err)
+			continue
+		}
+
+		// Calculate market value (use purchase price as fallback)
+		marketValue := 0.0
+		if asset.PurchasePrice != nil {
+			marketValue = *asset.PurchasePrice
+		}
+
+		assets = append(assets, gin.H{
+			"id":              asset.ID,
+			"assetName":       asset.AssetName,
+			"assetType":       asset.AssetType,
+			"institutionName": asset.InstitutionName,
+			"department":      asset.Department,
+			"functionalArea":  asset.FunctionalArea,
+			"marketValue":     marketValue,
+			"location":        asset.Location,
+			"status":          asset.Status,
+			"manufacturer":    asset.Manufacturer,
+			"modelNumber":     asset.ModelNumber,
+			"serialNumber":    asset.SerialNumber,
+			"purchaseDate":    asset.PurchaseDate.Format("2006-01-02"),
+			"purchasePrice":   asset.PurchasePrice,
+			"createdAt":       asset.CreatedAt.Format("2006-01-02 15:04:05"),
+			"updatedAt":       asset.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating assets: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing assets",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    assets,
+	})
 } 

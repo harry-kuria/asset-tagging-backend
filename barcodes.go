@@ -527,28 +527,33 @@ func getInstitutionInitials(institutionName string) string {
 	return initials
 }
 
-// fetchAssetsByInstitutionHandler fetches assets by institution
+// fetchAssetsByInstitutionHandler fetches assets by institution for Excel reports
 func fetchAssetsByInstitutionHandler(c *gin.Context) {
 	var req InstitutionBarcodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
 			Success: false,
-			Error:   "Invalid input data",
+			Error:   "Invalid request data: " + err.Error(),
 		})
 		return
 	}
 
-	// Get all assets for the institution
-	rows, err := db.Query(`
-		SELECT id, assetName, assetType, institutionName, department, functionalArea, 
-		manufacturer, modelNumber, serialNumber, location, status, purchaseDate, 
-		purchasePrice, logo, createdAt, updatedAt 
-		FROM assets WHERE institutionName = ?`, req.Institution)
+	// Build query with institution filter
+	query := `
+		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
+		manufacturer, model_number, serial_number, location, status, purchase_date, 
+		purchase_price, logo, created_at, updated_at 
+		FROM assets 
+		WHERE institution_name = ? AND institution_name IS NOT NULL
+		ORDER BY asset_name
+	`
+
+	rows, err := db.Query(query, req.Institution)
 	if err != nil {
 		log.Printf("Error fetching assets by institution: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Error:   "Internal Server Error",
+			Error:   "Failed to fetch assets: " + err.Error(),
 		})
 		return
 	}
@@ -567,6 +572,12 @@ func fetchAssetsByInstitutionHandler(c *gin.Context) {
 			continue
 		}
 
+		// Calculate market value (use purchase price as fallback)
+		marketValue := 0.0
+		if asset.PurchasePrice != nil {
+			marketValue = *asset.PurchasePrice
+		}
+
 		assets = append(assets, gin.H{
 			"id":              asset.ID,
 			"assetName":       asset.AssetName,
@@ -574,25 +585,31 @@ func fetchAssetsByInstitutionHandler(c *gin.Context) {
 			"institutionName": asset.InstitutionName,
 			"department":      asset.Department,
 			"functionalArea":  asset.FunctionalArea,
+			"marketValue":     marketValue,
+			"location":        asset.Location,
+			"status":          asset.Status,
 			"manufacturer":    asset.Manufacturer,
 			"modelNumber":     asset.ModelNumber,
 			"serialNumber":    asset.SerialNumber,
-			"location":        asset.Location,
-			"status":          asset.Status,
 			"purchaseDate":    asset.PurchaseDate.Format("2006-01-02"),
 			"purchasePrice":   asset.PurchasePrice,
-			"logo":            asset.Logo,
 			"createdAt":       asset.CreatedAt.Format("2006-01-02 15:04:05"),
 			"updatedAt":       asset.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating assets: %v", err)
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error processing assets",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data: gin.H{
-			"assets":      assets,
-			"institution": req.Institution,
-			"count":       len(assets),
-		},
+		Data:    assets,
 	})
 } 
