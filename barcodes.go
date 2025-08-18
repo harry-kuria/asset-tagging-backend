@@ -291,6 +291,9 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 			"filename":   pdfFilename,
 			"assetCount": len(assets),
 			"institution": req.Institution,
+			"department":  req.Department,
+			"barcodeTags": generateBarcodeTags(assets),
+			"assetDetails": assets,
 		},
 	})
 }
@@ -427,8 +430,37 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 			"assetCount": len(assets),
 			"institution": req.Institution,
 			"department":  req.Department,
+			"barcodeTags": generateBarcodeTags(assets),
+			"assetDetails": assets,
 		},
 	})
+}
+
+// generateBarcodeTags creates barcode tag data for frontend display
+func generateBarcodeTags(assets []Asset) []gin.H {
+	var barcodeTags []gin.H
+	for _, asset := range assets {
+		barcodeData := generateBarcodeData(asset)
+		barcodeTags = append(barcodeTags, gin.H{
+			"formattedString": barcodeData,
+			"assetDetails": gin.H{
+				"id":              asset.ID,
+				"assetName":       asset.AssetName,
+				"assetType":       safeString(asset.AssetType),
+				"institutionName": safeString(asset.InstitutionName),
+				"department":      safeString(asset.Department),
+				"functionalArea":  safeString(asset.FunctionalArea),
+				"manufacturer":    safeString(asset.Manufacturer),
+				"modelNumber":     safeString(asset.ModelNumber),
+				"serialNumber":    safeString(asset.SerialNumber),
+				"location":        safeString(asset.Location),
+				"status":          asset.Status,
+				"purchaseDate":    asset.PurchaseDate,
+				"purchasePrice":   asset.PurchasePrice,
+			},
+		})
+	}
+	return barcodeTags
 }
 
 // generateBarcodeData creates the data string for barcode generation
