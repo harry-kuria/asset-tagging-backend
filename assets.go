@@ -13,7 +13,7 @@ import (
 
 // getAssetsHandler returns all assets
 func getAssetsHandler(c *gin.Context) {
-	rows, err := db.Query("SELECT id, assetName, assetType, institutionName, department, functionalArea, manufacturer, modelNumber, serialNumber, location, status, purchaseDate, purchasePrice, logo, createdAt, updatedAt FROM assets")
+	rows, err := db.Query("SELECT id, assetName, assetType, institutionName, department, functionalArea, manufacturer, modelNumber, serialNumber, location, status, purchaseDate, purchasePrice, createdAt, updatedAt FROM assets")
 	if err != nil {
 		log.Printf("Error fetching assets: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -31,7 +31,7 @@ func getAssetsHandler(c *gin.Context) {
 			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
-			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+			&asset.CreatedAt, &asset.UpdatedAt)
 		if err != nil {
 			log.Printf("Error scanning asset: %v", err)
 			continue
@@ -51,7 +51,6 @@ func getAssetsHandler(c *gin.Context) {
 			"status":          asset.Status,
 			"purchaseDate":    asset.PurchaseDate.Format("2006-01-02"),
 			"purchasePrice":   asset.PurchasePrice,
-			"logo":            asset.Logo,
 			"createdAt":       asset.CreatedAt.Format("2006-01-02 15:04:05"),
 			"updatedAt":       asset.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
@@ -89,11 +88,11 @@ func addAssetHandler(c *gin.Context) {
 	result, err := db.Exec(`
 		INSERT INTO assets (assetName, assetType, institutionName, department, functionalArea, 
 		manufacturer, modelNumber, serialNumber, location, status, purchaseDate, purchasePrice, 
-		logo, createdAt, updatedAt) 
+		createdAt, updatedAt, companyId) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		req.AssetName, req.AssetType, req.InstitutionName, req.Department, req.FunctionalArea,
 		req.Manufacturer, req.ModelNumber, req.SerialNumber, req.Location, req.Status,
-		purchaseDate, req.PurchasePrice, "", time.Now(), time.Now())
+		purchaseDate, req.PurchasePrice, time.Now(), time.Now(), "1") // Default companyId for now
 
 	if err != nil {
 		log.Printf("Error adding asset: %v", err)
@@ -216,7 +215,7 @@ func searchAssetsHandler(c *gin.Context) {
 	rows, err := db.Query(`
 		SELECT id, assetName, assetType, institutionName, department, functionalArea, 
 		manufacturer, modelNumber, serialNumber, location, status, purchaseDate, 
-		purchasePrice, logo, createdAt, updatedAt 
+		purchasePrice, createdAt, updatedAt 
 		FROM assets 
 		WHERE assetName LIKE ? OR assetType LIKE ? OR institutionName LIKE ? OR 
 		department LIKE ? OR manufacturer LIKE ? OR modelNumber LIKE ? OR 
