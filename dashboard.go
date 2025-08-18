@@ -12,7 +12,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get total assets
 	var totalAssets int
-	err := db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ?", companyID).Scan(&totalAssets)
+	err := db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ?", companyID).Scan(&totalAssets)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -23,7 +23,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get active assets
 	var activeAssets int
-	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ? AND status = 'Active'", companyID).Scan(&activeAssets)
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ? AND status = 'Active'", companyID).Scan(&activeAssets)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -34,7 +34,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get total users
 	var totalUsers int
-	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE company_id = ? AND is_active = true", companyID).Scan(&totalUsers)
+	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE companyId = ? AND is_active = true", companyID).Scan(&totalUsers)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -45,7 +45,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get total value
 	var totalValue float64
-	err = db.QueryRow("SELECT COALESCE(SUM(purchase_price), 0) FROM assets WHERE company_id = ? AND purchase_price IS NOT NULL", companyID).Scan(&totalValue)
+	err = db.QueryRow("SELECT COALESCE(SUM(purchase_price), 0) FROM assets WHERE companyId = ? AND purchase_price IS NOT NULL", companyID).Scan(&totalValue)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -55,7 +55,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 	}
 
 	// Get assets by status
-	rows, err := db.Query("SELECT status, COUNT(*) FROM assets WHERE company_id = ? GROUP BY status", companyID)
+	rows, err := db.Query("SELECT status, COUNT(*) FROM assets WHERE companyId = ? GROUP BY status", companyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -77,7 +77,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 	}
 
 	// Get assets by type
-	rows, err = db.Query("SELECT asset_type, COUNT(*) FROM assets WHERE company_id = ? AND asset_type IS NOT NULL GROUP BY asset_type", companyID)
+	rows, err = db.Query("SELECT asset_type, COUNT(*) FROM assets WHERE companyId = ? AND asset_type IS NOT NULL GROUP BY asset_type", companyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -100,12 +100,12 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get recent assets (last 10)
 	rows, err = db.Query(`
-		SELECT id, company_id, asset_name, asset_type, institution_name, department, 
+		SELECT id, companyId, asset_name, asset_type, institution_name, department, 
 		functional_area, manufacturer, model_number, serial_number, location, status, 
 		purchase_date, purchase_price, assigned_to, notes, barcode, qr_code, logo, 
 		created_by, created_at, updated_at
 		FROM assets 
-		WHERE company_id = ? 
+		WHERE companyId = ? 
 		ORDER BY created_at DESC 
 		LIMIT 10
 	`, companyID)
@@ -137,10 +137,10 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get recent maintenance (last 5)
 	rows, err = db.Query(`
-		SELECT id, company_id, asset_id, maintenance_type, description, cost,
+		SELECT id, companyId, asset_id, maintenance_type, description, cost,
 		performed_by, performed_at, next_maintenance_date, created_by, created_at
 		FROM asset_maintenance 
-		WHERE company_id = ? 
+		WHERE companyId = ? 
 		ORDER BY performed_at DESC 
 		LIMIT 5
 	`, companyID)
