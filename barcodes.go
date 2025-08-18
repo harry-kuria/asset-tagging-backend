@@ -37,7 +37,7 @@ func generateBarcodesHandler(c *gin.Context) {
 	placeholders := strings.Repeat("?,", len(req.AssetIDs))
 	placeholders = placeholders[:len(placeholders)-1] // Remove trailing comma
 
-	query := fmt.Sprintf("SELECT id, assetName, assetType, institutionName, department, functionalArea, manufacturer, modelNumber, serialNumber, location, status, purchaseDate, purchasePrice, logo, createdAt, updatedAt FROM assets WHERE id IN (%s)", placeholders)
+	query := fmt.Sprintf("SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, logo, created_at, updated_at FROM assets WHERE id IN (%s)", placeholders)
 
 	args := make([]interface{}, len(req.AssetIDs))
 	for i, id := range req.AssetIDs {
@@ -175,10 +175,10 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 
 	// Get all assets for the institution
 	rows, err := db.Query(`
-		SELECT id, assetName, assetType, institutionName, department, functionalArea, 
-		manufacturer, modelNumber, serialNumber, location, status, purchaseDate, 
-		purchasePrice, logo, createdAt, updatedAt 
-		FROM assets WHERE institutionName = ?`, req.Institution)
+		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
+		manufacturer, model_number, serial_number, location, status, purchase_date, 
+		purchase_price, logo, created_at, updated_at 
+		FROM assets WHERE institution_name = ?`, req.Institution)
 	if err != nil {
 		log.Printf("Error fetching assets by institution: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -308,10 +308,10 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 
 	// Get all assets for the institution and department
 	rows, err := db.Query(`
-		SELECT id, assetName, assetType, institutionName, department, functionalArea, 
-		manufacturer, modelNumber, serialNumber, location, status, purchaseDate, 
-		purchasePrice, logo, createdAt, updatedAt 
-		FROM assets WHERE institutionName = ? AND department = ?`, req.Institution, req.Department)
+		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
+		manufacturer, model_number, serial_number, location, status, purchase_date, 
+		purchase_price, logo, created_at, updated_at 
+		FROM assets WHERE institution_name = ? AND department = ?`, req.Institution, req.Department)
 	if err != nil {
 		log.Printf("Error fetching assets by institution and department: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
