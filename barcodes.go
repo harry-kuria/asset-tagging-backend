@@ -37,7 +37,7 @@ func generateBarcodesHandler(c *gin.Context) {
 	placeholders := strings.Repeat("?,", len(req.AssetIDs))
 	placeholders = placeholders[:len(placeholders)-1] // Remove trailing comma
 
-	query := fmt.Sprintf("SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, logo, created_at, updated_at FROM assets WHERE id IN (%s)", placeholders)
+	query := fmt.Sprintf("SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, created_at, updated_at FROM assets WHERE id IN (%s)", placeholders)
 
 	args := make([]interface{}, len(req.AssetIDs))
 	for i, id := range req.AssetIDs {
@@ -62,7 +62,7 @@ func generateBarcodesHandler(c *gin.Context) {
 			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
-			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+			&asset.CreatedAt, &asset.UpdatedAt)
 		if err != nil {
 			log.Printf("Error scanning asset: %v", err)
 			continue
@@ -177,7 +177,7 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 	rows, err := db.Query(`
 		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
-		purchase_price, logo, created_at, updated_at 
+		purchase_price, created_at, updated_at 
 		FROM assets WHERE institution_name = ?`, req.Institution)
 	if err != nil {
 		log.Printf("Error fetching assets by institution: %v", err)
@@ -196,7 +196,7 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
-			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+			&asset.CreatedAt, &asset.UpdatedAt)
 		if err != nil {
 			log.Printf("Error scanning asset: %v", err)
 			continue
@@ -310,7 +310,7 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 	rows, err := db.Query(`
 		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
-		purchase_price, logo, created_at, updated_at 
+		purchase_price, created_at, updated_at 
 		FROM assets WHERE institution_name = ? AND department = ?`, req.Institution, req.Department)
 	if err != nil {
 		log.Printf("Error fetching assets by institution and department: %v", err)
@@ -329,7 +329,7 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
-			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+			&asset.CreatedAt, &asset.UpdatedAt)
 		if err != nil {
 			log.Printf("Error scanning asset: %v", err)
 			continue
