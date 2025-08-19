@@ -130,7 +130,6 @@ func generateReportHandler(c *gin.Context) {
 			"status":          asset.Status,
 			"purchaseDate":    asset.PurchaseDate.Format("2006-01-02"),
 			"purchasePrice":   asset.PurchasePrice,
-			"logo":            asset.Logo,
 			"createdAt":       asset.CreatedAt.Format("2006-01-02 15:04:05"),
 			"updatedAt":       asset.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
@@ -162,11 +161,11 @@ func generateAssetReportHandler(c *gin.Context) {
 	}
 
 	// Build query dynamically
-	query := "SELECT id, assetName, assetType, institutionName, department, functionalArea, manufacturer, modelNumber, serialNumber, location, status, purchaseDate, purchasePrice, logo, createdAt, updatedAt FROM assets WHERE 1=1"
+	query := "SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, created_at, updated_at FROM assets WHERE 1=1"
 	var args []interface{}
 
 	if req.AssetType != "" && req.AssetType != "All" {
-		query += " AND assetType = ?"
+		query += " AND asset_type = ?"
 		args = append(args, req.AssetType)
 	}
 
@@ -181,12 +180,12 @@ func generateAssetReportHandler(c *gin.Context) {
 	}
 
 	if req.StartDate != "" {
-		query += " AND purchaseDate >= ?"
+		query += " AND purchase_date >= ?"
 		args = append(args, req.StartDate)
 	}
 
 	if req.EndDate != "" {
-		query += " AND purchaseDate <= ?"
+		query += " AND purchase_date <= ?"
 		args = append(args, req.EndDate)
 	}
 
@@ -200,12 +199,12 @@ func generateAssetReportHandler(c *gin.Context) {
 	}
 
 	if req.ModelNumber != "" && req.ModelNumber != "All" {
-		query += " AND modelNumber = ?"
+		query += " AND model_number = ?"
 		args = append(args, req.ModelNumber)
 	}
 
 	if req.InstitutionName != "" && req.InstitutionName != "All" {
-		query += " AND institutionName = ?"
+		query += " AND institution_name = ?"
 		args = append(args, req.InstitutionName)
 	}
 
@@ -215,7 +214,7 @@ func generateAssetReportHandler(c *gin.Context) {
 	}
 
 	if req.FunctionalArea != "" && req.FunctionalArea != "All" {
-		query += " AND functionalArea = ?"
+		query += " AND functional_area = ?"
 		args = append(args, req.FunctionalArea)
 	}
 
@@ -237,7 +236,7 @@ func generateAssetReportHandler(c *gin.Context) {
 			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
-			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+			&asset.CreatedAt, &asset.UpdatedAt)
 		if err != nil {
 			log.Printf("Error scanning asset: %v", err)
 			continue
@@ -447,7 +446,7 @@ func fetchAssetsByInstitutionHandler(c *gin.Context) {
 	query := `
 		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
-		purchase_price, logo, created_at, updated_at 
+		purchase_price, created_at, updated_at 
 		FROM assets 
 		WHERE institution_name = ? AND institution_name IS NOT NULL
 		ORDER BY asset_name
@@ -471,7 +470,7 @@ func fetchAssetsByInstitutionHandler(c *gin.Context) {
 			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
-			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+			&asset.CreatedAt, &asset.UpdatedAt)
 		if err != nil {
 			log.Printf("Error scanning asset: %v", err)
 			continue
