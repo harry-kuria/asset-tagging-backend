@@ -37,7 +37,7 @@ func generateReportHandler(c *gin.Context) {
 	}
 
 	// Build query dynamically
-	query := "SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, logo, created_at, updated_at FROM assets WHERE institution_name = ?"
+	query := "SELECT id, asset_name, asset_type, institution_name, department, functional_area, manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, created_at, updated_at FROM assets WHERE institution_name = ?"
 	var args []interface{}
 	args = append(args, institutionName)
 
@@ -109,7 +109,7 @@ func generateReportHandler(c *gin.Context) {
 			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
-			&asset.Logo, &asset.CreatedAt, &asset.UpdatedAt)
+			&asset.CreatedAt, &asset.UpdatedAt)
 		if err != nil {
 			log.Printf("Error scanning asset: %v", err)
 			continue
