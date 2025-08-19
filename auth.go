@@ -512,6 +512,35 @@ func getCurrentCompanyID(c *gin.Context) int {
 	return 0
 } 
 
+// generateJWT creates a JWT token for the given user and company
+func generateJWT(userID, companyID int, username, role string) (string, error) {
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := Claims{
+		UserID:    userID,
+		CompanyID: companyID,
+		Username:  username,
+		Role:      role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	secretKey := os.Getenv("JWT_SECRET")
+	if secretKey == "" {
+		secretKey = "your-secret-key"
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(secretKey))
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
 // logoutHandler acknowledges logout (JWT is stateless; clients should discard the token)
 func logoutHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, APIResponse{
