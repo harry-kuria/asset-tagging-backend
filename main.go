@@ -167,7 +167,7 @@ func main() {
 	r.POST("/create-account", registerCompanyHandler)
 
 	// Legacy endpoints (public access for frontend compatibility)
-	r.POST("/addAsset", addAssetHandler) // Legacy endpoint for frontend compatibility
+	r.POST("/addAsset", authMiddleware(), checkTrialStatusMiddleware(), addAssetHandler) // Legacy endpoint with auth and trial check
 
 	// Protected routes (authentication required)
 	protected := r.Group("/api")
