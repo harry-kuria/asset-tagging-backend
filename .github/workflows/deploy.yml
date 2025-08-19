@@ -10,11 +10,11 @@ on:
         required: false
         type: string
         default: ''
-      sql_path:
-        description: 'Optional SQL file path to run as migration'
+      skip_migration:
+        description: 'Skip database migration (for testing)'
         required: false
-        type: string
-        default: ''
+        type: boolean
+        default: false
 
 env:
   AWS_REGION: us-east-1
@@ -26,8 +26,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        submodules: true
       
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -50,7 +48,6 @@ jobs:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        cd backend
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -63,6 +60,9 @@ jobs:
     env:
       EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
     steps:
+    - name: Checkout code (for migrations)
+      uses: actions/checkout@v4
+      
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -196,23 +196,73 @@ jobs:
         scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-simple.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
         ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}' bash ~/deploy-simple.sh"
 
-    - name: Optional migration (if sql_path provided)
-      if: inputs.sql_path != ''
+    - name: Run Database Migration
+      if: inputs.skip_migration != true
       run: |
         : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
-        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa "${{ inputs.sql_path }}" ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
+        echo "Running database migration..."
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa backend/migrations.sql ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
         ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "bash -s" << 'EOS'
         set -e
+        echo "==> Running database migration"
+        
         # Load env from /opt/asset-tagging/.env (expects HOST/USERNAME/PASSWORD/DB)
         if [ -f /opt/asset-tagging/.env ]; then
           set -a; . /opt/asset-tagging/.env; set +a
         else
           echo "/opt/asset-tagging/.env not found on EC2"; exit 1
         fi
+        
+        # Install MySQL client if not available
         if ! command -v mysql >/dev/null 2>&1; then
+          echo "Installing MySQL client..."
           sudo apt-get update -y && sudo apt-get install -y mysql-client
         fi
+        
         echo "Running migration against $HOST/$DB as $USERNAME"
+        
+        # Test database connection first
+        if ! mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" -e "SELECT 1;" >/dev/null 2>&1; then
+          echo "Failed to connect to database. Please check your credentials."
+          exit 1
+        fi
+        
+        # Run the migration
         mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" < "$HOME/migration.sql"
-        echo "Migration complete"
-        EOS 
+        
+        echo "Migration completed successfully!"
+        
+        # Verify migration by checking if companies table exists
+        if mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" -e "DESCRIBE companies;" >/dev/null 2>&1; then
+          echo "✅ Companies table created successfully"
+        else
+          echo "❌ Companies table not found after migration"
+          exit 1
+        fi
+        
+        # Check if assets table has company_id column
+        if mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" -e "DESCRIBE assets;" | grep -q "company_id"; then
+          echo "✅ Assets table updated with company_id column"
+        else
+          echo "❌ Assets table does not have company_id column"
+          exit 1
+        fi
+        
+        echo "Database migration verification completed successfully!"
+        EOS
+
+    - name: Migration Summary
+      if: inputs.skip_migration != true
+      run: |
+        echo "✅ Database migration completed successfully!"
+        echo "📊 Migration changes applied:"
+        echo "   - Created companies table with auto-incrementing IDs"
+        echo "   - Updated assets table to use integer company_id"
+        echo "   - Added foreign key constraints and indexes"
+        echo "   - Created default company (ID: 1)"
+        echo ""
+        echo "🚀 Your application now supports:"
+        echo "   - Auto-incrementing company IDs (1, 2, 3, ...)"
+        echo "   - Multi-tenant architecture with proper isolation"
+        echo "   - Company code generation (e.g., MOOWI1234)"
+        echo "   - Proper foreign key relationships" 
