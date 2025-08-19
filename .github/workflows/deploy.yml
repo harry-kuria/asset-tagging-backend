@@ -206,11 +206,48 @@ jobs:
         set -e
         echo "==> Running database migration"
         
+        # Check if /opt/asset-tagging directory exists
+        if [ ! -d "/opt/asset-tagging" ]; then
+          echo "❌ /opt/asset-tagging directory not found"
+          echo "Creating directory..."
+          sudo mkdir -p /opt/asset-tagging
+        fi
+        
+        # Check if .env file exists and has proper permissions
+        if [ ! -f "/opt/asset-tagging/.env" ]; then
+          echo "❌ /opt/asset-tagging/.env not found"
+          echo "Please ensure the .env file exists with database credentials:"
+          echo "HOST=your-db-host"
+          echo "USERNAME=your-db-username"
+          echo "PASSWORD=your-db-password"
+          echo "DB=your-database-name"
+          exit 1
+        fi
+        
+        # Check file permissions
+        if [ ! -r "/opt/asset-tagging/.env" ]; then
+          echo "❌ Cannot read /opt/asset-tagging/.env (permission denied)"
+          echo "Current permissions:"
+          ls -la /opt/asset-tagging/.env
+          echo "Attempting to fix permissions..."
+          sudo chmod 644 /opt/asset-tagging/.env
+          sudo chown $USER:$USER /opt/asset-tagging/.env
+        fi
+        
         # Load env from /opt/asset-tagging/.env (expects HOST/USERNAME/PASSWORD/DB)
-        if [ -f /opt/asset-tagging/.env ]; then
-          set -a; . /opt/asset-tagging/.env; set +a
-        else
-          echo "/opt/asset-tagging/.env not found on EC2"; exit 1
+        echo "Loading environment variables from /opt/asset-tagging/.env"
+        set -a; . /opt/asset-tagging/.env; set +a
+        
+        # Verify required environment variables
+        if [ -z "$HOST" ] || [ -z "$USERNAME" ] || [ -z "$PASSWORD" ] || [ -z "$DB" ]; then
+          echo "❌ Missing required environment variables in /opt/asset-tagging/.env"
+          echo "Required variables: HOST, USERNAME, PASSWORD, DB"
+          echo "Current values:"
+          echo "HOST: $HOST"
+          echo "USERNAME: $USERNAME"
+          echo "PASSWORD: [hidden]"
+          echo "DB: $DB"
+          exit 1
         fi
         
         # Install MySQL client if not available
@@ -223,14 +260,21 @@ jobs:
         
         # Test database connection first
         if ! mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" -e "SELECT 1;" >/dev/null 2>&1; then
-          echo "Failed to connect to database. Please check your credentials."
+          echo "❌ Failed to connect to database. Please check your credentials."
+          echo "Connection details:"
+          echo "Host: $HOST"
+          echo "Database: $DB"
+          echo "Username: $USERNAME"
           exit 1
         fi
         
+        echo "✅ Database connection successful"
+        
         # Run the migration
+        echo "Running migration script..."
         mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" < "$HOME/migration.sql"
         
-        echo "Migration completed successfully!"
+        echo "✅ Migration completed successfully!"
         
         # Verify migration by checking if companies table exists
         if mysql -h "$HOST" -P 3306 -u "$USERNAME" -p"$PASSWORD" "$DB" -e "DESCRIBE companies;" >/dev/null 2>&1; then
@@ -248,7 +292,7 @@ jobs:
           exit 1
         fi
         
-        echo "Database migration verification completed successfully!"
+        echo "✅ Database migration verification completed successfully!"
         EOS
 
     - name: Migration Summary
