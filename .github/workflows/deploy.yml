@@ -201,7 +201,7 @@ jobs:
       run: |
         : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
         echo "Running database migration..."
-        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa backend/migrations.sql ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
+        scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa migrations.sql ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/migration.sql
         ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "bash -s" << 'EOS'
         set -e
         echo "==> Running database migration"
