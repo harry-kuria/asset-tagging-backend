@@ -212,6 +212,7 @@ func main() {
 			assetRoutes.POST("/barcodes", generateBarcodesHandler)
 			assetRoutes.POST("/barcodes/institution", generateBarcodesByInstitutionHandler)
 			assetRoutes.POST("/barcodes/institution-department", generateBarcodesByInstitutionAndDepartmentHandler)
+			assetRoutes.POST("/barcodes/all-institutions", generateBarcodesForAllInstitutionsHandler) // Heavy load testing
 
 			// Reports
 			assetRoutes.POST("/reports", generateReportHandler)
