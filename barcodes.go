@@ -291,7 +291,6 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 			"filename":   pdfFilename,
 			"assetCount": len(assets),
 			"institution": req.Institution,
-			"department":  req.Department,
 			"barcodeTags": generateBarcodeTags(assets),
 			"assetDetails": assets,
 		},
