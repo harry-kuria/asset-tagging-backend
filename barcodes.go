@@ -308,6 +308,9 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 		return
 	}
 
+	// Debug logging
+	log.Printf("Received barcode generation request - Institution: '%s', Department: '%s'", req.Institution, req.Department)
+
 	// Get all assets for the institution and department
 	rows, err := db.Query(`
 		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
@@ -337,6 +340,31 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 			continue
 		}
 		assets = append(assets, asset)
+	}
+
+	// Debug logging
+	log.Printf("Found %d assets for institution '%s' and department '%s'", len(assets), req.Institution, req.Department)
+	if len(assets) == 0 {
+		// Log all assets to see what's available
+		allRows, err := db.Query("SELECT institution_name, department FROM assets")
+		if err == nil {
+			defer allRows.Close()
+			log.Printf("Available institution/department combinations:")
+			for allRows.Next() {
+				var inst, dept *string
+				if err := allRows.Scan(&inst, &dept); err == nil {
+					instStr := "NULL"
+					deptStr := "NULL"
+					if inst != nil {
+						instStr = *inst
+					}
+					if dept != nil {
+						deptStr = *dept
+					}
+					log.Printf("  Institution: '%s', Department: '%s'", instStr, deptStr)
+				}
+			}
+		}
 	}
 
 	// Generate PDF with barcodes
