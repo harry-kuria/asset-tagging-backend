@@ -705,7 +705,7 @@ func generateBarcodesForAllInstitutionsHandler(c *gin.Context) {
 
 	// Get all assets for the company
 	rows, err := db.Query(`
-		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
+		SELECT id, company_id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
 		purchase_price, created_at, updated_at 
 		FROM assets WHERE company_id = ? ORDER BY institution_name, department`, companyID)
@@ -723,7 +723,7 @@ func generateBarcodesForAllInstitutionsHandler(c *gin.Context) {
 	for rows.Next() {
 		var asset Asset
 		err := rows.Scan(
-			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
+			&asset.ID, &asset.CompanyID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
 			&asset.CreatedAt, &asset.UpdatedAt)
