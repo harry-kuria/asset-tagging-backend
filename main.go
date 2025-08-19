@@ -214,6 +214,7 @@ func main() {
 
 		// Dashboard
 		protected.GET("/dashboard/stats", getDashboardStatsHandler)
+		protected.GET("/dashboard/diagnostics", getDashboardDiagnosticsHandler) // Diagnostic endpoint for debugging
 
 		// Auth
 		protected.POST("/logout", logoutHandler)
