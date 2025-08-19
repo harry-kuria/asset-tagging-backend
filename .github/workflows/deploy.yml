@@ -10,11 +10,19 @@ on:
         required: false
         type: string
         default: ''
+<<<<<<< HEAD
       skip_migration:
         description: 'Skip database migration (for testing)'
         required: false
         type: boolean
         default: false
+=======
+      sql_path:
+        description: 'Optional SQL file path to run as migration'
+        required: false
+        type: string
+        default: ''
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
 
 env:
   AWS_REGION: us-east-1
@@ -60,9 +68,12 @@ jobs:
     env:
       EC2_PUBLIC_IP: ${{ inputs.ec2_public_ip != '' && inputs.ec2_public_ip || secrets.EC2_PUBLIC_IP }}
     steps:
+<<<<<<< HEAD
     - name: Checkout code (for migrations)
       uses: actions/checkout@v4
       
+=======
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -79,14 +90,21 @@ jobs:
         mkdir -p ~/.ssh
         if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then echo "EC2_SSH_PRIVATE_KEY not set"; exit 1; fi
         rm -f ~/.ssh/id_rsa
+<<<<<<< HEAD
         # Write key, handle CRLF and \n-escaped forms
         printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa || true
         # If it doesn't look like a PEM/OpenSSH key, try base64 decode
+=======
+        printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | perl -pe 's/\r//g; s/\\n/\n/g' > ~/.ssh/id_rsa || true
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         if ! grep -Eq "BEGIN (OPENSSH|RSA|EC|DSA) PRIVATE KEY" ~/.ssh/id_rsa; then
           printf "%s" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/id_rsa 2>/dev/null || true
         fi
         chmod 600 ~/.ssh/id_rsa
+<<<<<<< HEAD
         # Validate the key is loadable and unencrypted
+=======
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
           echo "Invalid or encrypted SSH private key in EC2_SSH_PRIVATE_KEY secret. Ensure it's an unencrypted PEM/OpenSSH key with correct newlines or provide raw/base64 content.";
           exit 1
@@ -99,7 +117,11 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
+<<<<<<< HEAD
         cat > deploy-simple.sh << 'EOF'
+=======
+        cat > deploy-simple.sh << 'SCRIPT_EOF'
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         #!/usr/bin/env bash
         set -e
         ECR_REGISTRY="${ECR_REGISTRY}"
@@ -110,7 +132,10 @@ jobs:
         sudo mkdir -p /opt/asset-tagging
         cd /opt/asset-tagging
         
+<<<<<<< HEAD
         # Ensure docker compose plugin
+=======
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         if docker compose version >/dev/null 2>&1; then
           DC="docker compose"
         elif command -v docker-compose >/dev/null 2>&1; then
@@ -126,8 +151,11 @@ jobs:
           DC="docker compose"
         fi
         
+<<<<<<< HEAD
         # Minimal compose file (app + caddy). Expects /opt/asset-tagging/.env to exist
         # Overwrite any previous compose file to avoid duplicate top-level keys
+=======
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         cat << YML | sudo tee docker-compose.yml > /dev/null
         services:
           app:
@@ -155,7 +183,10 @@ jobs:
           caddy_config:
         YML
 
+<<<<<<< HEAD
         # Write Caddyfile to proxy graf.moowigroup.com to app:5000
+=======
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         sudo tee Caddyfile > /dev/null <<'CF'
         graf.moowigroup.com {
           reverse_proxy app:5000
@@ -171,7 +202,10 @@ jobs:
         sudo docker pull "$IMAGE" || true
 
         echo "==> Restarting app"
+<<<<<<< HEAD
         # Use only the generated compose file (ignore any old overrides)
+=======
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         sudo $DC -f docker-compose.yml up -d --remove-orphans
 
         echo "==> Health check"
@@ -187,7 +221,11 @@ jobs:
         sudo $DC ps || true
         sudo docker logs --tail 200 $(sudo docker ps --filter name=app --format '{{.ID}}' | head -n1) || true
         exit 1
+<<<<<<< HEAD
         EOF
+=======
+        SCRIPT_EOF
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
         
     - name: Deploy to EC2
       run: |
@@ -195,6 +233,7 @@ jobs:
         : "${SSH_USER:=${{ secrets.EC2_SSH_USER || 'ubuntu' }}}"
         scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa deploy-simple.sh ${SSH_USER}@${{ env.EC2_PUBLIC_IP }}:~/
         ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa ${SSH_USER}@${{ env.EC2_PUBLIC_IP }} "ECR_REGISTRY='${{ steps.login-ecr.outputs.registry }}' bash ~/deploy-simple.sh"
+<<<<<<< HEAD
 
     - name: Run Database Migration
       if: inputs.skip_migration != true
@@ -266,3 +305,5 @@ jobs:
         echo "   - Multi-tenant architecture with proper isolation"
         echo "   - Company code generation (e.g., MOOWI1234)"
         echo "   - Proper foreign key relationships" 
+=======
+>>>>>>> 36806cf404ffd6fd027f01298fa1a7880c27ff45
