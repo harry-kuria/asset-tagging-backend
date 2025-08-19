@@ -97,8 +97,8 @@ locust -f locustfile.py --host=https://graf.moowigroup.com --users 20 --spawn-ra
 Edit the `on_start()` method in both user classes:
 ```python
 login_data = {
-    "username": "your_username",  # Change this
-    "password": "your_password"   # Change this
+    "username": "Terminal Reality Admin",  # Company ID 8 admin user
+    "password": "H@rri50n"   # Company ID 8 password
 }
 ```
 
@@ -139,7 +139,7 @@ PRINTER - CANON - JOMO KENY
 ## 🚨 Important Notes
 
 ### Authentication
-- Script logs in as admin user for company ID 8
+- Script logs in as "Terminal Reality Admin" for company ID 8
 - Uses JWT token authentication
 - Token expires after 24 hours
 
@@ -194,4 +194,4 @@ For issues with the load test script:
 
 ---
 
-**Happy Load Testing! 🎉** 
+**Happy Load Testing! 🎉**

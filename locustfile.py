@@ -11,8 +11,8 @@ class AssetTaggingUser(HttpUser):
         """Login and get authentication token"""
         # Login credentials for company ID 8
         login_data = {
-            "username": "admin",  # Adjust if different
-            "password": "password123"  # Adjust if different
+            "username": "Terminal Reality Admin",  # Updated username
+            "password": "H@rri50n"  # Updated password
         }
         
         response = self.client.post("/api/login", json=login_data)
@@ -273,8 +273,8 @@ class AssetBulkUser(HttpUser):
     def on_start(self):
         """Login and get authentication token"""
         login_data = {
-            "username": "admin",
-            "password": "password123"
+            "username": "Terminal Reality Admin",  # Updated username
+            "password": "H@rri50n"  # Updated password
         }
         
         response = self.client.post("/api/login", json=login_data)
