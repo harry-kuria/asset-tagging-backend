@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -9,10 +10,11 @@ import (
 // getDashboardStatsHandler returns dashboard statistics for the current company
 func getDashboardStatsHandler(c *gin.Context) {
 	companyID := getCurrentCompanyID(c)
+	companyIDStr := strconv.Itoa(companyID) // Convert to string for database comparison
 
 	// Get total assets
 	var totalAssets int
-	err := db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ?", companyID).Scan(&totalAssets)
+	err := db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ?", companyIDStr).Scan(&totalAssets)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -23,7 +25,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get active assets
 	var activeAssets int
-	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ? AND status = 'Active'", companyID).Scan(&activeAssets)
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ? AND status = 'Active'", companyIDStr).Scan(&activeAssets)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -34,7 +36,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get total users - handle potential column name mismatches
 	var totalUsers int
-	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE companyId = ? AND is_active = true", companyID).Scan(&totalUsers)
+	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE companyId = ? AND is_active = true", companyIDStr).Scan(&totalUsers)
 	if err != nil {
 		// If users table doesn't exist or has different structure, default to 0
 		totalUsers = 0
@@ -42,7 +44,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get total value
 	var totalValue float64
-	err = db.QueryRow("SELECT COALESCE(SUM(purchase_price), 0) FROM assets WHERE companyId = ? AND purchase_price IS NOT NULL", companyID).Scan(&totalValue)
+	err = db.QueryRow("SELECT COALESCE(SUM(purchase_price), 0) FROM assets WHERE companyId = ? AND purchase_price IS NOT NULL", companyIDStr).Scan(&totalValue)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -52,7 +54,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 	}
 
 	// Get assets by status
-	rows, err := db.Query("SELECT status, COUNT(*) FROM assets WHERE companyId = ? GROUP BY status", companyID)
+	rows, err := db.Query("SELECT status, COUNT(*) FROM assets WHERE companyId = ? GROUP BY status", companyIDStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -74,7 +76,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 	}
 
 	// Get assets by type
-	rows, err = db.Query("SELECT asset_type, COUNT(*) FROM assets WHERE companyId = ? AND asset_type IS NOT NULL GROUP BY asset_type", companyID)
+	rows, err = db.Query("SELECT asset_type, COUNT(*) FROM assets WHERE companyId = ? AND asset_type IS NOT NULL GROUP BY asset_type", companyIDStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -104,7 +106,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 		WHERE companyId = ? 
 		ORDER BY created_at DESC 
 		LIMIT 10
-	`, companyID)
+	`, companyIDStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -139,7 +141,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 		WHERE companyId = ? 
 		ORDER BY performed_at DESC 
 		LIMIT 5
-	`, companyID)
+	`, companyIDStr)
 	if err != nil {
 		// If table doesn't exist, just continue with empty maintenance data
 		// This is not a critical error for dashboard functionality

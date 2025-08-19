@@ -70,6 +70,10 @@ func addAssetHandler(c *gin.Context) {
 		return
 	}
 
+	// Get the current company ID from the authenticated user
+	companyID := getCurrentCompanyID(c)
+	companyIDStr := strconv.Itoa(companyID)
+
 	// Parse purchase date
 	var purchaseDate time.Time
 	var err error
@@ -92,7 +96,7 @@ func addAssetHandler(c *gin.Context) {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		req.AssetName, req.AssetType, req.InstitutionName, req.Department, req.FunctionalArea,
 		req.Manufacturer, req.ModelNumber, req.SerialNumber, req.Location, req.Status,
-		purchaseDate, req.PurchasePrice, time.Now(), time.Now(), "1") // Default companyId for now
+		purchaseDate, req.PurchasePrice, time.Now(), time.Now(), companyIDStr)
 
 	if err != nil {
 		log.Printf("Error adding asset: %v", err)
@@ -337,6 +341,10 @@ func addMultipleAssetsHandler(c *gin.Context) {
 		return
 	}
 
+	// Get the current company ID from the authenticated user
+	companyID := getCurrentCompanyID(c)
+	companyIDStr := strconv.Itoa(companyID)
+
 	var assetIDs []int64
 	for _, assetReq := range req.Assets {
 		// Parse purchase date
@@ -361,7 +369,7 @@ func addMultipleAssetsHandler(c *gin.Context) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			assetReq.AssetName, assetType, assetReq.InstitutionName, assetReq.Department, assetReq.FunctionalArea,
 			assetReq.Manufacturer, assetReq.ModelNumber, assetReq.SerialNumber, assetReq.Location, assetReq.Status,
-			purchaseDate, assetReq.PurchasePrice, time.Now(), time.Now(), "1") // Default companyId for now
+			purchaseDate, assetReq.PurchasePrice, time.Now(), time.Now(), companyIDStr)
 
 		if err != nil {
 			log.Printf("Error adding asset: %v", err)
