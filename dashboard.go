@@ -177,4 +177,133 @@ func getDashboardStatsHandler(c *gin.Context) {
 		Success: true,
 		Data:    stats,
 	})
+}
+
+// getDashboardDiagnosticsHandler provides diagnostic information for debugging company/asset issues
+func getDashboardDiagnosticsHandler(c *gin.Context) {
+	companyID := getCurrentCompanyID(c)
+	user := getCurrentUser(c)
+
+	// Get company information
+	var company Company
+	err := db.QueryRow(`
+		SELECT id, company_name, company_code, email, subscription_plan, is_active, trial_ends_at, created_at, updated_at
+		FROM companies WHERE id = ?
+	`, companyID).Scan(
+		&company.ID, &company.CompanyName, &company.CompanyCode, &company.Email,
+		&company.SubscriptionPlan, &company.IsActive, &company.TrialEndsAt,
+		&company.CreatedAt, &company.UpdatedAt,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to get company info: " + err.Error(),
+		})
+		return
+	}
+
+	// Get total assets for this company
+	var totalAssets int
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ?", companyID).Scan(&totalAssets)
+	if err != nil {
+		totalAssets = 0
+	}
+
+	// Get total users for this company
+	var totalUsers int
+	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE company_id = ? AND is_active = true", companyID).Scan(&totalUsers)
+	if err != nil {
+		totalUsers = 0
+	}
+
+	// Get all companies
+	rows, err := db.Query("SELECT id, company_name, company_code FROM companies ORDER BY id")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to get companies: " + err.Error(),
+		})
+		return
+	}
+	defer rows.Close()
+
+	var companies []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var name, code string
+		err := rows.Scan(&id, &name, &code)
+		if err != nil {
+			continue
+		}
+		companies = append(companies, map[string]interface{}{
+			"id": id, "name": name, "code": code,
+		})
+	}
+
+	// Get assets by company
+	rows, err = db.Query("SELECT company_id, COUNT(*) FROM assets GROUP BY company_id")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to get assets by company: " + err.Error(),
+		})
+		return
+	}
+	defer rows.Close()
+
+	assetsByCompany := make(map[int]int)
+	for rows.Next() {
+		var companyID, count int
+		err := rows.Scan(&companyID, &count)
+		if err != nil {
+			continue
+		}
+		assetsByCompany[companyID] = count
+	}
+
+	// Get sample assets for debugging
+	rows, err = db.Query("SELECT id, company_id, asset_name, created_at FROM assets ORDER BY created_at DESC LIMIT 5")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to get sample assets: " + err.Error(),
+		})
+		return
+	}
+	defer rows.Close()
+
+	var sampleAssets []map[string]interface{}
+	for rows.Next() {
+		var id, assetCompanyID int
+		var assetName, createdAt string
+		err := rows.Scan(&id, &assetCompanyID, &assetName, &createdAt)
+		if err != nil {
+			continue
+		}
+		sampleAssets = append(sampleAssets, map[string]interface{}{
+			"id": id, "company_id": assetCompanyID, "asset_name": assetName, "created_at": createdAt,
+		})
+	}
+
+	diagnostics := map[string]interface{}{
+		"current_user": map[string]interface{}{
+			"id":         user.ID,
+			"username":   user.Username,
+			"company_id": user.CompanyID,
+		},
+		"current_company": company,
+		"current_company_stats": map[string]interface{}{
+			"total_assets": totalAssets,
+			"total_users":  totalUsers,
+		},
+		"all_companies":     companies,
+		"assets_by_company": assetsByCompany,
+		"sample_assets":     sampleAssets,
+	}
+
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    diagnostics,
+	})
 } 
