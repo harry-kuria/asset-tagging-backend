@@ -173,12 +173,15 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 		return
 	}
 
-	// Get all assets for the institution
+	// Get current company ID
+	companyID := getCurrentCompanyID(c)
+
+	// Get all assets for the institution within the current company
 	rows, err := db.Query(`
 		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
 		purchase_price, created_at, updated_at 
-		FROM assets WHERE institution_name = ?`, req.Institution)
+		FROM assets WHERE institution_name = ? AND company_id = ?`, req.Institution, companyID)
 	if err != nil {
 		log.Printf("Error fetching assets by institution: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -202,6 +205,31 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 			continue
 		}
 		assets = append(assets, asset)
+	}
+
+	// Debug logging
+	log.Printf("Found %d assets for institution '%s' in company %d", len(assets), req.Institution, companyID)
+	if len(assets) == 0 {
+		// Log all assets for this company to see what's available
+		allRows, err := db.Query("SELECT institution_name, department FROM assets WHERE company_id = ?", companyID)
+		if err == nil {
+			defer allRows.Close()
+			log.Printf("Available institution/department combinations for company %d:", companyID)
+			for allRows.Next() {
+				var inst, dept *string
+				if err := allRows.Scan(&inst, &dept); err == nil {
+					instStr := "NULL"
+					deptStr := "NULL"
+					if inst != nil {
+						instStr = *inst
+					}
+					if dept != nil {
+						deptStr = *dept
+					}
+					log.Printf("  Institution: '%s', Department: '%s'", instStr, deptStr)
+				}
+			}
+		}
 	}
 
 	// Generate PDF with barcodes
@@ -311,12 +339,15 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 	// Debug logging
 	log.Printf("Received barcode generation request - Institution: '%s', Department: '%s'", req.Institution, req.Department)
 
-	// Get all assets for the institution and department
+	// Get current company ID
+	companyID := getCurrentCompanyID(c)
+
+	// Get all assets for the institution and department within the current company
 	rows, err := db.Query(`
 		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
 		purchase_price, created_at, updated_at 
-		FROM assets WHERE institution_name = ? AND department = ?`, req.Institution, req.Department)
+		FROM assets WHERE institution_name = ? AND department = ? AND company_id = ?`, req.Institution, req.Department, companyID)
 	if err != nil {
 		log.Printf("Error fetching assets by institution and department: %v", err)
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -343,13 +374,13 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 	}
 
 	// Debug logging
-	log.Printf("Found %d assets for institution '%s' and department '%s'", len(assets), req.Institution, req.Department)
+	log.Printf("Found %d assets for institution '%s' and department '%s' in company %d", len(assets), req.Institution, req.Department, companyID)
 	if len(assets) == 0 {
-		// Log all assets to see what's available
-		allRows, err := db.Query("SELECT institution_name, department FROM assets")
+		// Log all assets for this company to see what's available
+		allRows, err := db.Query("SELECT institution_name, department FROM assets WHERE company_id = ?", companyID)
 		if err == nil {
 			defer allRows.Close()
-			log.Printf("Available institution/department combinations:")
+			log.Printf("Available institution/department combinations for company %d:", companyID)
 			for allRows.Next() {
 				var inst, dept *string
 				if err := allRows.Scan(&inst, &dept); err == nil {
