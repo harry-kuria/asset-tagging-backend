@@ -151,23 +151,23 @@ type RegisterUserRequest struct {
 	Role      string `json:"role"`
 }
 
-// AddUserRequest represents adding a user to a company
+// AddUserRequest represents adding a new user
 type AddUserRequest struct {
 	Username  string `json:"username" binding:"required"`
 	Email     string `json:"email" binding:"required,email"`
 	Password  string `json:"password" binding:"required,min=6"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
-	Role      string `json:"role"`
+	Role      string `json:"role"` // admin, manager, user
 }
 
-// UpdateUserRequest represents user update request
+// UpdateUserRequest represents updating an existing user
 type UpdateUserRequest struct {
 	Username  string `json:"username"`
 	Email     string `json:"email"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
-	Role      string `json:"role"`
+	Role      string `json:"role"` // admin, manager, user
 	IsActive  *bool  `json:"is_active"`
 }
 

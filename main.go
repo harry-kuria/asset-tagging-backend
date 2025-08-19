@@ -184,12 +184,16 @@ func main() {
 		protected.PUT("/company", updateCompanyHandler)
 		protected.GET("/companies", listCompaniesHandler) // Admin only
 
-		// User management
-		protected.GET("/users", getUsersHandler)
-		protected.GET("/users/:id", getUserHandler)
-		protected.POST("/users", addUserHandler)
-		protected.PUT("/users/:id", updateUserHandler)
-		protected.DELETE("/users/:id", deleteUserHandler)
+		// User management (admin only)
+		userRoutes := protected.Group("")
+		userRoutes.Use(adminMiddleware())
+		{
+			userRoutes.GET("/users", getUsersHandler)
+			userRoutes.GET("/users/:id", getUserHandler)
+			userRoutes.POST("/users", addUserHandler)
+			userRoutes.PUT("/users/:id", updateUserHandler)
+			userRoutes.DELETE("/users/:id", deleteUserHandler)
+		}
 
 		// Asset management (requires active trial/subscription)
 		assetRoutes := protected.Group("")

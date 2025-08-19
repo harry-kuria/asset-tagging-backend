@@ -510,7 +510,19 @@ func getCurrentCompanyID(c *gin.Context) int {
 		return id
 	}
 	return 0
-} 
+}
+
+// getCurrentUserID returns the current user ID
+func getCurrentUserID(c *gin.Context) int {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		return 0
+	}
+	if id, ok := userID.(int); ok {
+		return id
+	}
+	return 0
+}
 
 // generateJWT creates a JWT token for the given user and company
 func generateJWT(userID, companyID int, username, role string) (string, error) {

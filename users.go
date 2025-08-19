@@ -10,7 +10,46 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// getUsersHandler returns all users for the current company
+// adminMiddleware checks if the current user has admin role
+func adminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := getCurrentUserID(c)
+		if userID == 0 {
+			c.JSON(http.StatusUnauthorized, APIResponse{
+				Success: false,
+				Error:   "Unauthorized",
+			})
+			c.Abort()
+			return
+		}
+
+		// Get user's role
+		var role string
+		err := db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   "Failed to get user role",
+			})
+			c.Abort()
+			return
+		}
+
+		// Check if user is admin
+		if role != "admin" {
+			c.JSON(http.StatusForbidden, APIResponse{
+				Success: false,
+				Error:   "Admin access required",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// getUsersHandler returns all users for the current company (admin only)
 func getUsersHandler(c *gin.Context) {
 	companyID := getCurrentCompanyID(c)
 
