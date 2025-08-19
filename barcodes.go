@@ -209,6 +209,26 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 
 	// Debug logging
 	log.Printf("Found %d assets for institution '%s' in company %d", len(assets), req.Institution, companyID)
+	
+	// Enhanced debugging to understand the data
+	log.Printf("=== DEBUG: Barcode Generation for Institution '%s' ===", req.Institution)
+	log.Printf("Company ID: %d", companyID)
+	log.Printf("Total assets found: %d", len(assets))
+	
+	// Check total assets in company
+	var totalCompanyAssets int
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ?", companyID).Scan(&totalCompanyAssets)
+	if err == nil {
+		log.Printf("Total assets in company %d: %d", companyID, totalCompanyAssets)
+	}
+	
+	// Check total assets for this institution across all companies
+	var totalInstitutionAssets int
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE institution_name = ?", req.Institution).Scan(&totalInstitutionAssets)
+	if err == nil {
+		log.Printf("Total assets for institution '%s' across all companies: %d", req.Institution, totalInstitutionAssets)
+	}
+	
 	if len(assets) == 0 {
 		// Log all assets for this company to see what's available
 		allRows, err := db.Query("SELECT institution_name, department FROM assets WHERE company_id = ?", companyID)
@@ -230,74 +250,132 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 				}
 			}
 		}
+		
+		// Also check what institutions exist in the database
+		instRows, err := db.Query("SELECT DISTINCT institution_name FROM assets WHERE company_id = ? AND institution_name IS NOT NULL", companyID)
+		if err == nil {
+			defer instRows.Close()
+			log.Printf("Available institutions for company %d:", companyID)
+			for instRows.Next() {
+				var inst *string
+				if err := instRows.Scan(&inst); err == nil {
+					instStr := "NULL"
+					if inst != nil {
+						instStr = *inst
+					}
+					log.Printf("  Institution: '%s'", instStr)
+				}
+			}
+		}
+	} else {
+		// Log sample of found assets
+		log.Printf("Sample of found assets:")
+		for i, asset := range assets {
+			if i < 5 { // Show first 5 assets
+				log.Printf("  Asset %d: ID=%d, Name='%s', Institution='%s', Department='%s'", 
+					i+1, asset.ID, asset.AssetName, safeString(asset.InstitutionName), safeString(asset.Department))
+			}
+		}
+		if len(assets) > 5 {
+			log.Printf("  ... and %d more assets", len(assets)-5)
+		}
 	}
+	
+	log.Printf("=== END DEBUG ===")
 
 	// Generate PDF with barcodes
 	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.AddPage()
+	
+	// Calculate how many barcodes per page (2 columns, 2 rows = 4 per page)
+	barcodesPerPage := 4
+	totalPages := (len(assets) + barcodesPerPage - 1) / barcodesPerPage
+	
+	log.Printf("Generating PDF with %d assets across %d pages (%d barcodes per page)", len(assets), totalPages, barcodesPerPage)
 
-	// Set font
-	pdf.SetFont("Arial", "B", 16)
-	pdf.Cell(190, 10, fmt.Sprintf("Asset Barcodes - %s", req.Institution))
-	pdf.Ln(15)
-
-	pdf.SetFont("Arial", "", 10)
-
-	for i, asset := range assets {
-		if i > 0 && i%2 == 0 {
-			pdf.AddPage()
-		}
-
-		// Generate barcode data
-		barcodeData := generateBarcodeData(asset)
-
-		// Create barcode
-		code, err := code128.Encode(barcodeData)
-		if err != nil {
-			log.Printf("Error creating barcode: %v", err)
-			continue
-		}
-
-		// Scale barcode
-		scaledCode, err := barcode.Scale(code, 200, 50)
-		if err != nil {
-			log.Printf("Error scaling barcode: %v", err)
-			continue
-		}
-
-		// Save barcode as image
-		tmpFile, err := os.CreateTemp("", fmt.Sprintf("barcode_%d_*.png", asset.ID))
-		if err != nil {
-			log.Printf("Error creating barcode temp file: %v", err)
-			continue
-		}
-		if err := png.Encode(tmpFile, scaledCode); err != nil {
-			_ = tmpFile.Close()
-			log.Printf("Error encoding barcode: %v", err)
-			continue
-		}
-		if err := tmpFile.Close(); err != nil {
-			log.Printf("Error closing barcode file: %v", err)
-		}
-
-		// Add barcode to PDF
-		pdf.Image(tmpFile.Name(), 10, float64(30+(i%2)*120), 80, 20, false, "", 0, "")
+	for pageNum := 0; pageNum < totalPages; pageNum++ {
+		pdf.AddPage()
 		
-		// Add asset details
-		pdf.SetXY(10, float64(55+(i%2)*120))
-		pdf.Cell(80, 5, fmt.Sprintf("Asset: %s", asset.AssetName))
-		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Type: %s", safeString(asset.AssetType)))
-		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Department: %s", safeString(asset.Department)))
-		pdf.Ln(5)
-		pdf.Cell(80, 5, fmt.Sprintf("Location: %s", safeString(asset.Location)))
-		pdf.Ln(10)
+		// Set font for header
+		pdf.SetFont("Arial", "B", 16)
+		pdf.Cell(190, 10, fmt.Sprintf("Asset Barcodes - %s (Page %d of %d)", req.Institution, pageNum+1, totalPages))
+		pdf.Ln(15)
 
-		// Clean up temporary file
-		if err := os.Remove(tmpFile.Name()); err != nil {
-			log.Printf("Error removing temp barcode file: %v", err)
+		// Set font for details
+		pdf.SetFont("Arial", "", 10)
+		
+		// Calculate start and end indices for this page
+		startIdx := pageNum * barcodesPerPage
+		endIdx := startIdx + barcodesPerPage
+		if endIdx > len(assets) {
+			endIdx = len(assets)
 		}
+		
+		// Process assets for this page
+		for i := startIdx; i < endIdx; i++ {
+			asset := assets[i]
+			position := i - startIdx // Position on this page (0-3)
+			
+			// Calculate position on page (2x2 grid)
+			row := position / 2
+			col := position % 2
+			
+			xPos := 10 + col*95 // 95mm spacing between columns
+			yPos := 30 + row*120 // 120mm spacing between rows
+
+			// Generate barcode data
+			barcodeData := generateBarcodeData(asset)
+
+			// Create barcode
+			code, err := code128.Encode(barcodeData)
+			if err != nil {
+				log.Printf("Error creating barcode for asset %d: %v", asset.ID, err)
+				continue
+			}
+
+			// Scale barcode
+			scaledCode, err := barcode.Scale(code, 200, 50)
+			if err != nil {
+				log.Printf("Error scaling barcode for asset %d: %v", asset.ID, err)
+				continue
+			}
+
+			// Save barcode as image
+			tmpFile, err := os.CreateTemp("", fmt.Sprintf("barcode_%d_*.png", asset.ID))
+			if err != nil {
+				log.Printf("Error creating barcode temp file for asset %d: %v", asset.ID, err)
+				continue
+			}
+			if err := png.Encode(tmpFile, scaledCode); err != nil {
+				_ = tmpFile.Close()
+				log.Printf("Error encoding barcode for asset %d: %v", asset.ID, err)
+				continue
+			}
+			if err := tmpFile.Close(); err != nil {
+				log.Printf("Error closing barcode file for asset %d: %v", asset.ID, err)
+			}
+
+			// Add barcode to PDF
+			pdf.Image(tmpFile.Name(), xPos, yPos, 80, 20, false, "", 0, "")
+			
+			// Add asset details below barcode
+			pdf.SetXY(xPos, yPos+25)
+			pdf.Cell(80, 5, fmt.Sprintf("Asset: %s", asset.AssetName))
+			pdf.Ln(5)
+			pdf.Cell(80, 5, fmt.Sprintf("Type: %s", safeString(asset.AssetType)))
+			pdf.Ln(5)
+			pdf.Cell(80, 5, fmt.Sprintf("Department: %s", safeString(asset.Department)))
+			pdf.Ln(5)
+			pdf.Cell(80, 5, fmt.Sprintf("Location: %s", safeString(asset.Location)))
+			pdf.Ln(10)
+
+			// Clean up temporary file immediately
+			if err := os.Remove(tmpFile.Name()); err != nil {
+				log.Printf("Error removing temp barcode file for asset %d: %v", asset.ID, err)
+			}
+		}
+		
+		// Add progress indicator
+		log.Printf("Generated page %d/%d with %d barcodes", pageNum+1, totalPages, endIdx-startIdx)
 	}
 
 	// Save PDF
@@ -314,13 +392,16 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Message: "Barcodes generated successfully",
+		Message: fmt.Sprintf("Barcodes generated successfully for %d assets", len(assets)),
 		Data: gin.H{
 			"filename":   pdfFilename,
 			"assetCount": len(assets),
 			"institution": req.Institution,
 			"barcodeTags": generateBarcodeTags(assets),
 			"assetDetails": assets,
+			"totalPages": totalPages,
+			"barcodesPerPage": barcodesPerPage,
+			"generationTime": "Completed", // Could add actual timing if needed
 		},
 	})
 }
