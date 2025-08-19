@@ -178,7 +178,7 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 
 	// Get all assets for the institution within the current company
 	rows, err := db.Query(`
-		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
+		SELECT id, company_id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
 		purchase_price, created_at, updated_at 
 		FROM assets WHERE institution_name = ? AND company_id = ?`, req.Institution, companyID)
@@ -196,7 +196,7 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 	for rows.Next() {
 		var asset Asset
 		err := rows.Scan(
-			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
+			&asset.ID, &asset.CompanyID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
 			&asset.CreatedAt, &asset.UpdatedAt)
@@ -425,7 +425,7 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 
 	// Get all assets for the institution and department within the current company
 	rows, err := db.Query(`
-		SELECT id, asset_name, asset_type, institution_name, department, functional_area, 
+		SELECT id, company_id, asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, 
 		purchase_price, created_at, updated_at 
 		FROM assets WHERE institution_name = ? AND department = ? AND company_id = ?`, req.Institution, req.Department, companyID)
@@ -443,7 +443,7 @@ func generateBarcodesByInstitutionAndDepartmentHandler(c *gin.Context) {
 	for rows.Next() {
 		var asset Asset
 		err := rows.Scan(
-			&asset.ID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
+			&asset.ID, &asset.CompanyID, &asset.AssetName, &asset.AssetType, &asset.InstitutionName, &asset.Department,
 			&asset.FunctionalArea, &asset.Manufacturer, &asset.ModelNumber, &asset.SerialNumber,
 			&asset.Location, &asset.Status, &asset.PurchaseDate, &asset.PurchasePrice,
 			&asset.CreatedAt, &asset.UpdatedAt)
