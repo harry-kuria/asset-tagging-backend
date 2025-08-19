@@ -72,7 +72,6 @@ func addAssetHandler(c *gin.Context) {
 
 	// Get the current company ID from the authenticated user
 	companyID := getCurrentCompanyID(c)
-	companyIDStr := strconv.Itoa(companyID)
 
 	// Parse purchase date
 	var purchaseDate time.Time
@@ -92,11 +91,11 @@ func addAssetHandler(c *gin.Context) {
 	result, err := db.Exec(`
 		INSERT INTO assets (asset_name, asset_type, institution_name, department, functional_area, 
 		manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, 
-		created_at, updated_at, companyId) 
+		created_at, updated_at, company_id) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		req.AssetName, req.AssetType, req.InstitutionName, req.Department, req.FunctionalArea,
 		req.Manufacturer, req.ModelNumber, req.SerialNumber, req.Location, req.Status,
-		purchaseDate, req.PurchasePrice, time.Now(), time.Now(), companyIDStr)
+		purchaseDate, req.PurchasePrice, time.Now(), time.Now(), companyID)
 
 	if err != nil {
 		log.Printf("Error adding asset: %v", err)
@@ -343,7 +342,6 @@ func addMultipleAssetsHandler(c *gin.Context) {
 
 	// Get the current company ID from the authenticated user
 	companyID := getCurrentCompanyID(c)
-	companyIDStr := strconv.Itoa(companyID)
 
 	var assetIDs []int64
 	for _, assetReq := range req.Assets {
@@ -365,11 +363,11 @@ func addMultipleAssetsHandler(c *gin.Context) {
 		result, err := db.Exec(`
 			INSERT INTO assets (asset_name, asset_type, institution_name, department, functional_area, 
 			manufacturer, model_number, serial_number, location, status, purchase_date, purchase_price, 
-			created_at, updated_at, companyId) 
+			created_at, updated_at, company_id) 
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			assetReq.AssetName, assetType, assetReq.InstitutionName, assetReq.Department, assetReq.FunctionalArea,
 			assetReq.Manufacturer, assetReq.ModelNumber, assetReq.SerialNumber, assetReq.Location, assetReq.Status,
-			purchaseDate, assetReq.PurchasePrice, time.Now(), time.Now(), companyIDStr)
+			purchaseDate, assetReq.PurchasePrice, time.Now(), time.Now(), companyID)
 
 		if err != nil {
 			log.Printf("Error adding asset: %v", err)

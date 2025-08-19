@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -10,11 +9,10 @@ import (
 // getDashboardStatsHandler returns dashboard statistics for the current company
 func getDashboardStatsHandler(c *gin.Context) {
 	companyID := getCurrentCompanyID(c)
-	companyIDStr := strconv.Itoa(companyID) // Convert to string for database comparison
 
 	// Get total assets
 	var totalAssets int
-	err := db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ?", companyIDStr).Scan(&totalAssets)
+	err := db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ?", companyID).Scan(&totalAssets)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -25,7 +23,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get active assets
 	var activeAssets int
-	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE companyId = ? AND status = 'Active'", companyIDStr).Scan(&activeAssets)
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ? AND status = 'Active'", companyID).Scan(&activeAssets)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -36,7 +34,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get total users - handle potential column name mismatches
 	var totalUsers int
-	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE companyId = ? AND is_active = true", companyIDStr).Scan(&totalUsers)
+	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE company_id = ? AND is_active = true", companyID).Scan(&totalUsers)
 	if err != nil {
 		// If users table doesn't exist or has different structure, default to 0
 		totalUsers = 0
@@ -44,7 +42,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get total value
 	var totalValue float64
-	err = db.QueryRow("SELECT COALESCE(SUM(purchase_price), 0) FROM assets WHERE companyId = ? AND purchase_price IS NOT NULL", companyIDStr).Scan(&totalValue)
+	err = db.QueryRow("SELECT COALESCE(SUM(purchase_price), 0) FROM assets WHERE company_id = ? AND purchase_price IS NOT NULL", companyID).Scan(&totalValue)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -54,7 +52,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 	}
 
 	// Get assets by status
-	rows, err := db.Query("SELECT status, COUNT(*) FROM assets WHERE companyId = ? GROUP BY status", companyIDStr)
+	rows, err := db.Query("SELECT status, COUNT(*) FROM assets WHERE company_id = ? GROUP BY status", companyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -76,7 +74,7 @@ func getDashboardStatsHandler(c *gin.Context) {
 	}
 
 	// Get assets by type
-	rows, err = db.Query("SELECT asset_type, COUNT(*) FROM assets WHERE companyId = ? AND asset_type IS NOT NULL GROUP BY asset_type", companyIDStr)
+	rows, err = db.Query("SELECT asset_type, COUNT(*) FROM assets WHERE company_id = ? AND asset_type IS NOT NULL GROUP BY asset_type", companyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -99,14 +97,14 @@ func getDashboardStatsHandler(c *gin.Context) {
 
 	// Get recent assets (last 10)
 	rows, err = db.Query(`
-		SELECT id, companyId, asset_name, asset_type, institution_name, department, 
+		SELECT id, company_id, asset_name, asset_type, institution_name, department, 
 		functional_area, manufacturer, model_number, serial_number, location, status, 
 		purchase_date, purchase_price, created_at, updated_at
 		FROM assets 
-		WHERE companyId = ? 
+		WHERE company_id = ? 
 		ORDER BY created_at DESC 
 		LIMIT 10
-	`, companyIDStr)
+	`, companyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -135,13 +133,13 @@ func getDashboardStatsHandler(c *gin.Context) {
 	// Get recent maintenance (last 5) - handle case where table might not exist
 	var recentMaintenance []AssetMaintenance
 	rows, err = db.Query(`
-		SELECT id, companyId, asset_id, maintenance_type, description, cost,
+		SELECT id, company_id, asset_id, maintenance_type, description, cost,
 		performed_by, performed_at, next_maintenance_date, created_by, created_at
 		FROM asset_maintenance 
-		WHERE companyId = ? 
+		WHERE company_id = ? 
 		ORDER BY performed_at DESC 
 		LIMIT 5
-	`, companyIDStr)
+	`, companyID)
 	if err != nil {
 		// If table doesn't exist, just continue with empty maintenance data
 		// This is not a critical error for dashboard functionality

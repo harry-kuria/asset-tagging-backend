@@ -153,6 +153,7 @@ func main() {
 	{
 		public.POST("/login", loginHandler)
 		public.POST("/register/company", registerCompanyHandler)
+		public.POST("/companies", createCompanyHandler) // New company creation endpoint
 		
 		// Reference data (public access)
 		public.GET("/categories", getCategoriesHandler)
@@ -172,6 +173,11 @@ func main() {
 	protected := r.Group("/api")
 	protected.Use(authMiddleware())
 	{
+		// Company management
+		protected.GET("/company", getCompanyHandler)
+		protected.PUT("/company", updateCompanyHandler)
+		protected.GET("/companies", listCompaniesHandler) // Admin only
+
 		// User management
 		protected.GET("/users", getUsersHandler)
 		protected.GET("/users/:id", getUserHandler)
