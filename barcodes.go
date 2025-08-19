@@ -319,8 +319,8 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 			row := position / 2
 			col := position % 2
 			
-			xPos := 10 + col*95 // 95mm spacing between columns
-			yPos := 30 + row*120 // 120mm spacing between rows
+			xPos := float64(10 + col*95) // 95mm spacing between columns
+			yPos := float64(30 + row*120) // 120mm spacing between rows
 
 			// Generate barcode data
 			barcodeData := generateBarcodeData(asset)
@@ -358,7 +358,7 @@ func generateBarcodesByInstitutionHandler(c *gin.Context) {
 			pdf.Image(tmpFile.Name(), xPos, yPos, 80, 20, false, "", 0, "")
 			
 			// Add asset details below barcode
-			pdf.SetXY(xPos, yPos+25)
+			pdf.SetXY(xPos, yPos+25.0)
 			pdf.Cell(80, 5, fmt.Sprintf("Asset: %s", asset.AssetName))
 			pdf.Ln(5)
 			pdf.Cell(80, 5, fmt.Sprintf("Type: %s", safeString(asset.AssetType)))
