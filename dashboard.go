@@ -51,6 +51,22 @@ func getDashboardStatsHandler(c *gin.Context) {
 		return
 	}
 
+	// Get total barcodes (assets with barcode or QR code)
+	var totalBarcodes int
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ? AND (barcode IS NOT NULL OR qr_code IS NOT NULL)", companyID).Scan(&totalBarcodes)
+	if err != nil {
+		// If barcode columns don't exist, default to 0
+		totalBarcodes = 0
+	}
+
+	// Get scanned barcodes (assets that have been scanned - for now, we'll use assets with recent activity)
+	var scannedBarcodes int
+	err = db.QueryRow("SELECT COUNT(*) FROM assets WHERE company_id = ? AND updated_at > DATE_SUB(NOW(), INTERVAL 30 DAY)", companyID).Scan(&scannedBarcodes)
+	if err != nil {
+		// If there's an error, default to 0
+		scannedBarcodes = 0
+	}
+
 	// Get assets by status
 	rows, err := db.Query("SELECT status, COUNT(*) FROM assets WHERE company_id = ? GROUP BY status", companyID)
 	if err != nil {
@@ -167,6 +183,8 @@ func getDashboardStatsHandler(c *gin.Context) {
 		ActiveAssets:      activeAssets,
 		TotalUsers:        totalUsers,
 		TotalValue:        totalValue,
+		TotalBarcodes:     totalBarcodes,
+		ScannedBarcodes:   scannedBarcodes,
 		AssetsByStatus:    assetsByStatus,
 		AssetsByType:      assetsByType,
 		RecentAssets:      recentAssets,

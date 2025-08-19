@@ -331,6 +331,8 @@ type DashboardStats struct {
 	ActiveAssets    int     `json:"active_assets"`
 	TotalUsers      int     `json:"total_users"`
 	TotalValue      float64 `json:"total_value"`
+	TotalBarcodes   int     `json:"total_barcodes"`
+	ScannedBarcodes int     `json:"scanned_barcodes"`
 	AssetsByStatus  map[string]int `json:"assets_by_status"`
 	AssetsByType    map[string]int `json:"assets_by_type"`
 	RecentAssets    []Asset `json:"recent_assets"`
