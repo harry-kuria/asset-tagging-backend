@@ -173,6 +173,12 @@ func main() {
 	protected := r.Group("/api")
 	protected.Use(authMiddleware())
 	{
+		// Trial management (no trial check required)
+		protected.GET("/trial/status", getTrialStatusHandler)
+		protected.GET("/trial/plans", getPaymentPlansHandler)
+		protected.POST("/trial/payment", initiatePaymentHandler)
+		protected.POST("/payment/webhook", paymentWebhookHandler)
+
 		// Company management
 		protected.GET("/company", getCompanyHandler)
 		protected.PUT("/company", updateCompanyHandler)
@@ -185,36 +191,40 @@ func main() {
 		protected.PUT("/users/:id", updateUserHandler)
 		protected.DELETE("/users/:id", deleteUserHandler)
 
-		// Asset management
-		protected.GET("/assets", getAssetsHandler)
-		protected.GET("/assets/:id", getAssetDetailsHandler)
-		protected.POST("/assets", addAssetHandler)
-		protected.POST("/assets/multiple", addMultipleAssetsHandler)
-		protected.PUT("/assets/:id", updateAssetHandler)
-		protected.DELETE("/assets/:id", deleteAssetHandler)
-		protected.POST("/assets/search", searchAssetsHandler)
+		// Asset management (requires active trial/subscription)
+		assetRoutes := protected.Group("")
+		assetRoutes.Use(checkTrialStatusMiddleware())
+		{
+			assetRoutes.GET("/assets", getAssetsHandler)
+			assetRoutes.GET("/assets/:id", getAssetDetailsHandler)
+			assetRoutes.POST("/assets", addAssetHandler)
+			assetRoutes.POST("/assets/multiple", addMultipleAssetsHandler)
+			assetRoutes.PUT("/assets/:id", updateAssetHandler)
+			assetRoutes.DELETE("/assets/:id", deleteAssetHandler)
+			assetRoutes.POST("/assets/search", searchAssetsHandler)
 
-		// Asset categories (protected - for management)
-		protected.POST("/categories", addCategoryHandler)
-		protected.PUT("/categories/:id", updateCategoryHandler)
-		protected.DELETE("/categories/:id", deleteCategoryHandler)
+			// Asset categories (protected - for management)
+			assetRoutes.POST("/categories", addCategoryHandler)
+			assetRoutes.PUT("/categories/:id", updateCategoryHandler)
+			assetRoutes.DELETE("/categories/:id", deleteCategoryHandler)
 
-		// Barcode generation
-		protected.POST("/barcodes", generateBarcodesHandler)
-		protected.POST("/barcodes/institution", generateBarcodesByInstitutionHandler)
-		protected.POST("/barcodes/institution-department", generateBarcodesByInstitutionAndDepartmentHandler)
+			// Barcode generation
+			assetRoutes.POST("/barcodes", generateBarcodesHandler)
+			assetRoutes.POST("/barcodes/institution", generateBarcodesByInstitutionHandler)
+			assetRoutes.POST("/barcodes/institution-department", generateBarcodesByInstitutionAndDepartmentHandler)
 
-		// Reports
-		protected.POST("/reports", generateReportHandler)
-		protected.GET("/generateReport", generateReportHandler) // Legacy GET endpoint
-		protected.POST("/fetchAssetsByInstitution", fetchAssetsByInstitutionHandler) // For Excel reports
-		protected.POST("/reports/assets", generateAssetReportHandler)
-		protected.POST("/reports/invoice", generateInvoiceHandler)
-		protected.GET("/reports/download/:filename", downloadHandler)
+			// Reports
+			assetRoutes.POST("/reports", generateReportHandler)
+			assetRoutes.GET("/generateReport", generateReportHandler) // Legacy GET endpoint
+			assetRoutes.POST("/fetchAssetsByInstitution", fetchAssetsByInstitutionHandler) // For Excel reports
+			assetRoutes.POST("/reports/assets", generateAssetReportHandler)
+			assetRoutes.POST("/reports/invoice", generateInvoiceHandler)
+			assetRoutes.GET("/reports/download/:filename", downloadHandler)
 
-		// Dashboard
-		protected.GET("/dashboard/stats", getDashboardStatsHandler)
-		protected.GET("/dashboard/diagnostics", getDashboardDiagnosticsHandler) // Diagnostic endpoint for debugging
+			// Dashboard
+			assetRoutes.GET("/dashboard/stats", getDashboardStatsHandler)
+			assetRoutes.GET("/dashboard/diagnostics", getDashboardDiagnosticsHandler) // Diagnostic endpoint for debugging
+		}
 
 		// Auth
 		protected.POST("/logout", logoutHandler)
